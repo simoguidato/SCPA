@@ -1,5 +1,6 @@
 #ifndef MPI_GRID_H
 #define MPI_GRID_H
+#include <mpi.h>
 
 // Struttura per gestire la distribuzione della matrice A sulla griglia 2D
 typedef struct {
@@ -10,5 +11,7 @@ typedef struct {
 
 // Calcola come partizionare la matrice globale tra i processi
 void compute_grid_partition(int M, int N, int rows_grid, int cols_grid, int my_row, int my_col, GridInfo *info);
+// Suddivide la griglia 2D in comunicatori di riga e di colonna
+void create_sub_communicators(MPI_Comm cart_comm, MPI_Comm *row_comm, MPI_Comm *col_comm);
 
 #endif

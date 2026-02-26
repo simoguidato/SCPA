@@ -9,6 +9,8 @@ set(SOURCES
         src/mpi_grid.c
         src/utils.c
         include/utils.h
+        include/kernel.h
+        src/kernel.c
 )
 
 add_executable(SCPA ${SOURCES})
