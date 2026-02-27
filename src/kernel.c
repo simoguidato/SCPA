@@ -1,5 +1,5 @@
 #include "kernel.h"
-#include <omp.h>
+//#include <omp.h>
 
 void compute_local_gemm(int local_M, int local_N, int k,
                         const double *A_local, const double *X_local,

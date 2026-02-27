@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <mpi.h>
 #include "utils.h"
+#include <math.h>
 
+double epsilon = 1e-9;
 // Allocazione allineata a 64 byte per massimizzare MFLOPS [punto 24 e 40]
 double* allocate_matrix(int rows, int cols) {
     double *ptr = NULL;
@@ -29,11 +31,27 @@ void generate_data_locally(double *local_A, GridInfo info, unsigned int seed) {
 
 // Verifica del risultato (essenziale per il collaudo [punto 12])
 int verify_result(double *Y_parallel, double *Y_serial, int size) {
-    double epsilon = 1e-9;
     for (int i = 0; i < size; i++) {
-        if (abs(Y_parallel[i] - Y_serial[i]) > epsilon) {
+        if (fabs(Y_parallel[i] - Y_serial[i]) > epsilon) {
             return 0; // Errore nel calcolo
         }
     }
     return 1; // Successo
+}
+// Calcola Y = A * X in modo seriale per verificare la correttezza
+void compute_serial_gemm(int M, int N, int k, const double *A, const double *X, double *Y) {
+    // Inizializza Y a zero
+    for (int i = 0; i < M * k; i++) {
+        Y[i] = 0.0;
+    }
+
+    // Calcolo Row-Major
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < N; j++) {
+            double a_val = A[i * N + j];
+            for (int p = 0; p < k; p++) {
+                Y[i * k + p] += a_val * X[j * k + p];
+            }
+        }
+    }
 }
