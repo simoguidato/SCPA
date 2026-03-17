@@ -1,6 +1,8 @@
 #include "kernel.h"
 //#include <omp.h>
 
+void setup_device_memory(int M, int N, int k, const double *A, const double *X) {}
+void free_device_memory(int M, int N, int k, double *Y) {}
 void compute_local_gemm(int M, int N, int k, const double *A, const double *X, double *Y) {
 
     // Il nuovo pragma corazzato e professionale:

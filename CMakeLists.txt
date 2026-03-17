@@ -1,37 +1,33 @@
 cmake_minimum_required(VERSION 3.22)
-project(SCPA C)
+project(SCPA LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
-
-# 1. Flag di Ottimizzazione per HPC (Fondamentale per i GFLOPS!)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Definisci i file sorgente e gli header (utile per visualizzarli in CLion)
-set(SOURCES
-        src/main.c
-        src/mpi_grid.c
-        src/utils.c
-        src/kernel.c
-        include/utils.h
-        include/kernel.h
-        include/mpi_grid.h
+option(USE_CUDA "Abilita l'accelerazione GPU con CUDA" OFF)
+
+# Ora puntiamo tutto alla cartella 'core'
+set(COMMON_SOURCES
+        core/main.c
+        core/mpi_grid.c
+        core/utils.c
+        core/args.c
+        core/validation.c
+        cuda/kernel_cuda.cu
 )
 
-add_executable(SCPA ${SOURCES})
+if(USE_CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_ARCHITECTURES native)
+    add_executable(SCPA ${COMMON_SOURCES} cuda/kernel_cuda.cu)
+    target_compile_definitions(SCPA PRIVATE USE_CUDA_BACKEND)
+else()
+    find_package(OpenMP REQUIRED)
+    add_executable(SCPA ${COMMON_SOURCES} omp/kernel.c)
+    target_link_libraries(SCPA PUBLIC OpenMP::OpenMP_C)
+endif()
 
-# Specifica la cartella degli header
 target_include_directories(SCPA PUBLIC include)
-
-# 2. Cerca MPI (Requisito del progetto)
 find_package(MPI REQUIRED)
-
-# 3. Cerca OpenMP (Per il kernel di calcolo)
-find_package(OpenMP REQUIRED)
-
-# 4. Collega tutte le librerie all'eseguibile (MPI, OpenMP e Math 'm')
-target_link_libraries(SCPA
-        PUBLIC
-        MPI::MPI_C
-        OpenMP::OpenMP_C
-        m
-)
+target_link_libraries(SCPA PUBLIC MPI::MPI_C m)

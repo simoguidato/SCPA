@@ -30,7 +30,7 @@ void generate_data_locally(double *local_A, GridInfo info, unsigned int seed) {
 }
 
 // Verifica del risultato (essenziale per il collaudo [punto 12])
-int verify_result(double *Y_parallel, double *Y_serial, int size) {
+int verify_result(const double *Y_parallel, const double *Y_serial, int size) {
     for (int i = 0; i < size; i++) {
         if (fabs(Y_parallel[i] - Y_serial[i]) > epsilon) {
             return 0; // Errore nel calcolo
