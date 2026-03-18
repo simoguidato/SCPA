@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "kernel.h"
 #include "validation.h"
+#include <assert.h>
 
 int main(int argc, char *argv[]) {
     int rank, num_procs;
@@ -39,14 +40,18 @@ int main(int argc, char *argv[]) {
     double *local_A = allocate_matrix(info.local_M, info.local_N);
     double *local_X = allocate_matrix(info.local_N, args.k);
     double *local_Y = allocate_matrix(info.local_M, args.k);
-
-    generate_data_locally(local_A, info, 42);
-    if (coords[1] == 0) {
-        for (int i = 0; i < info.local_N * args.k; i++) local_X[i] = 1.0;
+    if (local_A == NULL || local_X == NULL || local_Y == NULL) {
+        fprintf(stderr, "[Errore] Allocazione memoria fallita.\n");
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, row_comm);
+    generate_data_locally(local_A, info, 42); // Genera la sua fetta di A
+
+    // Ognuno si genera la SUA fetta di X in autonomia! (Zero comunicazione, 100% scalabile)
+    generate_X_locally(local_X, info.local_N, args.k, info.offset_N, 42);
+
+  //  MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, row_comm);
 
     // 4. Benchmark e Calcolo
     int num_iter = 10;
@@ -84,27 +89,55 @@ int main(int argc, char *argv[]) {
 
     // 5. Raccolta Dati (Gather)
     double *row_Y = NULL;
-    if (coords[1] == 0) row_Y = allocate_matrix(info.local_M, args.k);
+    if (coords[1] == 0) {
+        row_Y = allocate_matrix(info.local_M, args.k);
+        if (row_Y == NULL) {
+            fprintf(stderr, "[Errore] Allocazione fallita per row_Y.\n");
+            MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Somma dei risultati parziali lungo la riga
     MPI_Reduce(local_Y, row_Y, info.local_M * args.k, MPI_DOUBLE, MPI_SUM, 0, row_comm);
 
     double *Y_parallel_global = NULL;
     int *recvcounts = NULL, *displs = NULL;
-    if (rank == 0) {
-        Y_parallel_global = allocate_matrix(args.M, args.k);
-        recvcounts = malloc(dims[0] * sizeof(int));
-        displs = malloc(dims[0] * sizeof(int));
-        int offset = 0;
-        for (int r = 0; r < dims[0]; r++) {
-            int r_local_M = args.M / dims[0];
-            if (r == dims[0] - 1) r_local_M += args.M % dims[0];
-            recvcounts[r] = r_local_M * args.k;
-            displs[r] = offset;
-            offset += recvcounts[r];
-        }
-    }
 
     if (coords[1] == 0) {
-        MPI_Gatherv(row_Y, info.local_M * args.k, MPI_DOUBLE, Y_parallel_global, recvcounts, displs, MPI_DOUBLE, 0, col_comm);
+        int my_Y_size = info.local_M * args.k;
+
+        // 1. Il Master alloca TUTTO subito (così l'IDE non si confonde)
+        if (rank == 0) {
+            recvcounts = malloc(dims[0] * sizeof(int));
+            displs = malloc(dims[0] * sizeof(int));
+            Y_parallel_global = allocate_matrix(args.M, args.k);
+
+            if (recvcounts == NULL || displs == NULL || Y_parallel_global == NULL) {
+                fprintf(stderr, "[Errore] Allocazione array gather fallita.\n");
+                MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // 2. Colleziona le dimensioni
+        MPI_Gather(&my_Y_size, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, col_comm);
+
+        // 3. Il Master calcola gli offset
+        if (rank == 0) {
+            // MAGIA NERA PER L'IDE: L'asserzione lo costringe a fidarsi e azzera i warning
+            assert(displs != NULL && recvcounts != NULL);
+
+            displs[0] = 0;
+            for (int r = 1; r < dims[0]; r++) {
+                displs[r] = displs[r - 1] + recvcounts[r - 1];
+            }
+        }
+
+        // 4. Gather finale
+        MPI_Gatherv(row_Y, my_Y_size, MPI_DOUBLE,
+                    (rank == 0 ? Y_parallel_global : NULL),
+                    recvcounts, displs, MPI_DOUBLE, 0, col_comm);
         free(row_Y);
     }
 

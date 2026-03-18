@@ -55,3 +55,16 @@ void compute_serial_gemm(int M, int N, int k, const double *A, const double *X, 
         }
     }
 }
+
+// Generazione deterministica di X basata sull'offset globale delle colonne di A
+void generate_X_locally(double *local_X, int local_N, int k, int offset_N, unsigned int seed) {
+    for (int i = 0; i < local_N; i++) {
+        for (int j = 0; j < k; j++) {
+            long long global_idx = (long long)(offset_N + i) * k + j;
+            // Generiamo numeri decimali deterministici
+            local_X[i * k + j] = (double)((global_idx + seed + 17) % 100) / 13.0;
+            //local_X[i * k + j] = 1.0;    PER FARE TEST
+        }
+    }
+}
+

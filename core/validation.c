@@ -20,7 +20,10 @@ void run_validation(AppArgs args, const double *Y_parallel_global, double parall
                 A_global[i * args.N + j] = (double)((global_idx + seed) % 100) / 7.0;
             }
         }
-        for (int i = 0; i < args.N * args.k; i++) X_global[i] = 1.0;
+
+        for (int i = 0; i < args.N * args.k; i++) {
+            X_global[i] = (double)((i + 42 + 17) % 100) / 13.0;
+        }
 
         double start_serial = MPI_Wtime();
         compute_serial_gemm(args.M, args.N, args.k, A_global, X_global, Y_serial);

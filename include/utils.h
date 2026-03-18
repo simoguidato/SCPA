@@ -13,5 +13,5 @@ void generate_data_locally(double *local_A, GridInfo info, unsigned int seed);
 int verify_result(const double *Y_parallel, const double *Y_serial, int size);
 
 void compute_serial_gemm(int M, int N, int k, const double *A, const double *X, double *Y);
-
+void generate_X_locally(double *local_X, int local_N, int k, int offset_N, unsigned int seed);
 #endif

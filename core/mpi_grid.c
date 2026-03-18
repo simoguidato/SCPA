@@ -5,17 +5,19 @@ void compute_grid_partition(int M, int N, int rows_grid, int cols_grid, int my_r
     info->global_M = M;
     info->global_N = N;
 
-    // Divisione base (arrotondata per difetto)
-    info->local_M = M / rows_grid;
-    info->local_N = N / cols_grid;
+    // --- Calcolo Righe (M) bilanciato ---
+    int base_M = M / rows_grid;
+    int rest_M = M % rows_grid;
+    // Se la mia riga è minore del resto, prendo +1. Altrimenti base.
+    info->local_M = base_M + (my_row < rest_M ? 1 : 0);
+    // Formula magica per l'offset senza ricalcolare tutto
+    info->offset_M = my_row * base_M + (my_row < rest_M ? my_row : rest_M);
 
-    // Gestione del resto: l'ultimo processo di ogni riga/colonna riceve gli elementi extra 
-    if (my_row == rows_grid - 1) info->local_M += M % rows_grid;
-    if (my_col == cols_grid - 1) info->local_N += N % cols_grid;
-
-    // Calcolo del punto di partenza (offset) nella matrice globale
-    info->offset_M = my_row * (M / rows_grid);
-    info->offset_N = my_col * (N / cols_grid);
+    // --- Calcolo Colonne (N) bilanciato ---
+    int base_N = N / cols_grid;
+    int rest_N = N % cols_grid;
+    info->local_N = base_N + (my_col < rest_N ? 1 : 0);
+    info->offset_N = my_col * base_N + (my_col < rest_N ? my_col : rest_N);
 }
 void create_sub_communicators(MPI_Comm cart_comm, MPI_Comm *row_comm, MPI_Comm *col_comm) {
     int remain_dims[2];
