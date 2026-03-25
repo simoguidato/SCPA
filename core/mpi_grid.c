@@ -1,5 +1,6 @@
 #include "mpi_grid.h"
 #include <mpi.h>
+#include <stdio.h>
 
 void compute_grid_partition(int M, int N, int rows_grid, int cols_grid, int my_row, int my_col, GridInfo *info) {
     info->global_M = M;
@@ -18,6 +19,7 @@ void compute_grid_partition(int M, int N, int rows_grid, int cols_grid, int my_r
     int rest_N = N % cols_grid;
     info->local_N = base_N + (my_col < rest_N ? 1 : 0);
     info->offset_N = my_col * base_N + (my_col < rest_N ? my_col : rest_N);
+    //printf("calcolo suddivisione partizioni %d(M), %d(N)",info->local_M, info->local_N);
 }
 void create_sub_communicators(MPI_Comm cart_comm, MPI_Comm *row_comm, MPI_Comm *col_comm) {
     int remain_dims[2];

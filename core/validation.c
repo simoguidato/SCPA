@@ -4,8 +4,13 @@
 #include "validation.h"
 #include "utils.h"
 
-void run_validation(AppArgs args, const double *Y_parallel_global, double parallel_avg_time) {
-    if (args.M > 2000 || args.N > 2000) return; // Salta il test in silenzio
+void run_validation(AppArgs args,int rank, const double *Y_parallel_global, double parallel_avg_time) {
+    if (args.M > 2000 || args.N > 2000) {
+        if (rank == 0) {
+            printf("\n[Warning] Matrici troppo grandi (%d x %d). Validazione seriale disattivata per evitare tempi di attesa eccessivi.\n", args.M, args.N);
+        }
+        return;
+    } // Salta il test in silenzio
 
     printf("[Test] Avvio verifica seriale globale e benchmark base...\n");
     double *A_global = allocate_matrix(args.M, args.N);

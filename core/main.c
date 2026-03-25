@@ -43,16 +43,23 @@ int main(int argc, char *argv[]) {
     if (local_A == NULL || local_X == NULL || local_Y == NULL) {
         fprintf(stderr, "[Errore] Allocazione memoria fallita.\n");
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
 
-    generate_data_locally(local_A, info, 42); // Genera la sua fetta di A
+    // Tutti generano la loro fetta di A
+    generate_data_locally(local_A, info, 42);
 
-    // Ognuno si genera la SUA fetta di X in autonomia! (Zero comunicazione, 100% scalabile)
-    generate_X_locally(local_X, info.local_N, args.k, info.offset_N, 42);
+    // RISPETTO DELLE SPECIFICHE DEL PROGETTO:
+    // "si può assumere che X occupi una sola riga di questa griglia"
+    if (coords[0] == 0) {
+        // Solo i processi nella PRIMA RIGA della griglia generano X
+        generate_X_locally(local_X, info.local_N, args.k, info.offset_N, 42);
+    }
 
-  //  MPI_Barrier(MPI_COMM_WORLD);
-    //MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, row_comm);
-
+    // I processi della prima riga (root = 0 del col_comm) trasmettono X
+    // a tutti i processi sottostanti nella loro stessa colonna.
+    MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, col_comm);
+    printf("distribuito Multivettore X\n");
     // 4. Benchmark e Calcolo
     int num_iter = 10;
 
@@ -143,7 +150,7 @@ int main(int argc, char *argv[]) {
 
     // 6. Validazione Seriale e Confronto
     if (rank == 0) {
-        run_validation(args, Y_parallel_global, parallel_avg_time);
+        run_validation(args,rank, Y_parallel_global, parallel_avg_time);
         free(Y_parallel_global); free(recvcounts); free(displs);
     }
 
