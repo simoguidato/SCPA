@@ -3,7 +3,7 @@
 #include <string.h>
 
 // Dimensione perfetta per il Working Set di 24KB (entra tutto nei 32KB della L1)
-#define BLOCK_SIZE 32
+//#define BLOCK_SIZE 32
 #define MAX_K 32
 void setup_device_memory(int M, int N, int k, const double *A, const double *X) {}
 void free_device_memory(int M, int N, int k, double *Y) {}

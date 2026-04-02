@@ -25,21 +25,22 @@ static int parse_boolean_flag(const char *str, int rank) {
     return (int)val;
 }
 
+// Sostituisci la funzione parse_arguments con questa:
 AppArgs parse_arguments(int argc, char *argv[], int rank, int num_procs) {
     AppArgs args;
-    if (argc < 4 || argc > 5) {
-        if (rank == 0) printf("Uso: mpirun -np <P> %s <M> <N> <k> [warmup: 0 o 1]\n", argv[0]);
+    // Ora accettiamo fino a 7 argomenti!
+    if (argc < 4 || argc > 7) {
+        if (rank == 0) printf("Uso: mpirun -np <P> %s <M> <N> <k> [warmup] [validate] [kernel_type]\n", argv[0]);
         MPI_Finalize();
         exit(EXIT_FAILURE);
     }
     args.M = parse_positive_int(argv[1], rank, "M");
     args.N = parse_positive_int(argv[2], rank, "N");
     args.k = parse_positive_int(argv[3], rank, "k");
-    args.do_warmup = (argc == 5) ? parse_boolean_flag(argv[4], rank) : 1;
 
-    if (rank == 0) {
-        printf("\n[Sistema] Avvio SPMM: Matrice %dx%d, k=%d, Processi MPI=%d\n", args.M, args.N, args.k, num_procs);
-        printf("[Sistema] Warm-up: %s\n", args.do_warmup ? "ATTIVO" : "DISATTIVATO");
-    }
+    args.do_warmup = (argc >= 5) ? parse_boolean_flag(argv[4], rank) : 1;
+    args.do_validate = (argc >= 6) ? parse_boolean_flag(argv[5], rank) : 1;
+    args.kernel_type = (argc == 7) ? parse_boolean_flag(argv[6], rank) : 0; // Se non passato, usa 0 di default
+
     return args;
 }

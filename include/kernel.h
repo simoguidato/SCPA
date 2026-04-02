@@ -8,5 +8,6 @@ void compute_local_gemm(int local_M, int local_N, int k,
                         double *Y_local);
 void setup_device_memory(int M, int N, int k, const double *A, const double *X);
 void free_device_memory(int M, int N, int k, double *Y);
+void compute_local_gemm_naive(int M, int N, int k, const double *A, const double *X, double *Y);
 
 #endif

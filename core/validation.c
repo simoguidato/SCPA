@@ -2,17 +2,37 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include "validation.h"
+#include <math.h>
 #include "utils.h"
 
-void run_validation(AppArgs args,int rank, const double *Y_parallel_global, double parallel_avg_time) {
-    if (args.M > 2000 || args.N > 2000) {
-        if (rank == 0) {
-            printf("\n[Warning] Matrici troppo grandi (%d x %d). Validazione seriale disattivata per evitare tempi di attesa eccessivi.\n", args.M, args.N);
-        }
-        return;
-    } // Salta il test in silenzio
+double compute_relative_error(int size, const double *Y_serial, const double *Y_parallel) {
+    double norm_diff = 0.0;
+    double norm_serial = 0.0;
 
-    printf("[Test] Avvio verifica seriale globale e benchmark base...\n");
+    for (int i = 0; i < size; i++) {
+        double diff = Y_serial[i] - Y_parallel[i];
+        norm_diff += diff * diff;
+        norm_serial += Y_serial[i] * Y_serial[i];
+    }
+
+    if (norm_serial == 0) return sqrt(norm_diff);
+    return sqrt(norm_diff) / sqrt(norm_serial);
+}
+
+// Firma aggiornata senza 'rank'
+void run_validation(AppArgs args, const double *Y_parallel_global, double parallel_avg_time) {
+
+    double gflops = (parallel_avg_time > 0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9) : 0.0;
+
+    // SE DO_VALIDATE È 0, SALTA TUTTO E STAMPA SOLO I GFLOPS PARALLELI
+    if (!args.do_validate) {
+        // Stampiamo 0.0 per i tempi seriali, Python gestirà il ricalcolo
+        printf("DATA_CSV:%.6f,%.6f,%.2e,%.4f,%.4f\n",
+               parallel_avg_time, 0.0, 0.0, gflops, 0.0);
+        return;
+    }
+
+    printf("[Test] Avvio verifica seriale globale...\n");
     double *A_global = allocate_matrix(args.M, args.N);
     double *X_global = allocate_matrix(args.N, args.k);
     double *Y_serial = allocate_matrix(args.M, args.k);
@@ -32,24 +52,24 @@ void run_validation(AppArgs args,int rank, const double *Y_parallel_global, doub
 
         double start_serial = MPI_Wtime();
         compute_serial_gemm(args.M, args.N, args.k, A_global, X_global, Y_serial);
-        double end_serial = MPI_Wtime();
+        double serial_time = MPI_Wtime() - start_serial;
 
-        double serial_time = end_serial - start_serial;
-        double serial_gflops = (2.0 * args.M * args.N * args.k) / (serial_time * 1e9);
+        double rel_error = compute_relative_error(args.M * args.k, Y_serial, Y_parallel_global);
+        double speedup = (parallel_avg_time > 0) ? (serial_time / parallel_avg_time) : 0.0;
 
-        if (verify_result(Y_parallel_global, Y_serial, args.M * args.k)) {
-            printf("[SUCCESSO] Risultato Parallelo = Risultato Seriale!\n");
+        printf("--------------------------------------------------\n");
+        if (rel_error < 1e-10) {
+            printf("[Validazione] Corretto (Errore Relativo: %.2e)\n", rel_error);
         } else {
-            printf("[ERRORE] I risultati non coincidono.\n");
+            printf("[ERRORE] Instabilita numerica! (Errore Relativo: %.2e)\n", rel_error);
         }
+        printf("[Benchmark Seriale] Tempo: %.4f sec\n", serial_time);
+        printf("[Risultato Finale] SPEEDUP: %.2fx\n", speedup);
+        printf("--------------------------------------------------\n");
 
-        printf("--------------------------------------------------\n");
-        printf("[Benchmark Seriale] Tempo: %.4f sec | Prestazioni: %.2f GFLOPS\n", serial_time, serial_gflops);
-        if (parallel_avg_time > 0) {
-            double speedup = serial_time / parallel_avg_time;
-            printf("[Risultato Finale] SPEEDUP: %.2fx\n", speedup);
-        }
-        printf("--------------------------------------------------\n");
+        // RIGA CRITICA
+        printf("DATA_CSV:%.6f,%.6f,%.2e,%.4f,%.4f\n",
+               parallel_avg_time, serial_time, rel_error, gflops, speedup);
 
         free(A_global); free(X_global); free(Y_serial);
     }

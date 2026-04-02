@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     // I processi della prima riga (root = 0 del col_comm) trasmettono X
     // a tutti i processi sottostanti nella loro stessa colonna.
     MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, col_comm);
-    printf("distribuito Multivettore X\n");
+    if (rank == 0) printf("[MPI] Multivettore X distribuito.\n");
     // 4. Benchmark e Calcolo
     int num_iter = 10;
 
@@ -73,8 +73,12 @@ int main(int argc, char *argv[]) {
 
     MPI_Barrier(MPI_COMM_WORLD);
     double start_time = MPI_Wtime();
-    for (int iter = 0; iter < num_iter; iter++) {
-        compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+    for (int it = 0; it < num_iter; it++) {
+        if (args.kernel_type == 0) {
+            compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+        } else {
+            compute_local_gemm_naive(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+        }
     }
     MPI_Barrier(MPI_COMM_WORLD);
     double end_time = MPI_Wtime();
@@ -150,7 +154,7 @@ int main(int argc, char *argv[]) {
 
     // 6. Validazione Seriale e Confronto
     if (rank == 0) {
-        run_validation(args,rank, Y_parallel_global, parallel_avg_time);
+        run_validation(args, Y_parallel_global, parallel_avg_time);
         free(Y_parallel_global); free(recvcounts); free(displs);
     }
 

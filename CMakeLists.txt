@@ -15,6 +15,7 @@ set(COMMON_SOURCES
         core/args.c
         core/validation.c
         cuda/kernel_cuda.cu
+        omp/kernel_naive.c
 )
 
 if(USE_CUDA)
