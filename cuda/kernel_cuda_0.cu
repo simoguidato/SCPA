@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 // =========================================================================
-// 1. IL KERNEL GPU (Eseguito da migliaia di CUDA Core contemporaneamente)
+// 1. IL KERNEL GPU
 // =========================================================================
 __global__ void gemm_cuda_kernel(int M, int N, int k, const double *A, const double *X, double *Y) {
     // Calcoliamo l'indice globale del thread (che corrisponderà alla riga 'i')
@@ -32,9 +32,9 @@ static double *d_X = NULL;
 static double *d_Y = NULL;
 
 void setup_device_memory(int M, int N, int k, const double *A, const double *X) {
-    size_t size_A = M * N * sizeof(double);
-    size_t size_X = N * k * sizeof(double);
-    size_t size_Y = M * k * sizeof(double);
+    size_t size_A = (size_t)M * N * sizeof(double);
+    size_t size_X = (size_t)N * k * sizeof(double);
+    size_t size_Y = (size_t)M * k * sizeof(double);
 
     cudaMalloc((void**)&d_A, size_A);
     cudaMalloc((void**)&d_X, size_X);
@@ -52,9 +52,10 @@ void compute_local_gemm(int M, int N, int k, const double *A, const double *X, d
     // 2. Lanciamo il calcolo
     int threadsPerBlock = 256;
     int blocksPerGrid = (M + threadsPerBlock - 1) / threadsPerBlock;
-    gemm_cuda_kernel<<<blocksPerGrid, threadsPerBlock>>>(M, N, k, d_A, d_X, d_Y);
-
-    // 3. Aspettiamo che finisca
+    gemm_cuda_kernel<<<blocksPerGrid, threadsPerBlock>>>(...);
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+        printf("[CUDA Kernel 0] Errore: %s\n", cudaGetErrorString(err));
     cudaDeviceSynchronize();
 }
 
@@ -63,7 +64,7 @@ void free_device_memory(int M, int N, int k, double *Y) {
     cudaMemcpy(Y, d_Y, M * k * sizeof(double), cudaMemcpyDeviceToHost);
 
     // Puliamo la memoria della scheda video
-    cudaFree(d_A);
-    cudaFree(d_X);
-    cudaFree(d_Y);
+    cudaFree(d_A); d_A = NULL;
+    cudaFree(d_X); d_X = NULL;
+    cudaFree(d_Y); d_Y = NULL;
 }

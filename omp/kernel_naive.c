@@ -1,15 +1,21 @@
 #include "kernel.h"
-#include <omp.h>
 
 void compute_local_gemm_naive(int M, int N, int k, const double *A, const double *X, double *Y) {
     // Parallelismo base sulle righe
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) default(none) shared(M, N, k, A, X, Y)
     for (int i = 0; i < M; i++) {
+
+        // FIX CRITICO (Punto 3 della tua checklist):
+        // Dobbiamo azzerare la riga di Y prima di accumulare,
+        // altrimenti sommeremo spazzatura per 10 iterazioni!
+        for (int p = 0; p < k; p++) {
+            Y[i * k + p] = 0.0;
+        }
+
         for (int j = 0; j < N; j++) {
             double a_val = A[i * N + j];
             for (int p = 0; p < k; p++) {
-                // ACCESSO DIRETTO IN MEMORIA: Molto più lento perché non usa i registri ZMM
-                // e causa continue scritture/letture sulla cache L1/L2
+                // Ora l'accumulo è sicuro e corretto
                 Y[i * k + p] += a_val * X[j * k + p];
             }
         }

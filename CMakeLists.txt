@@ -14,14 +14,15 @@ set(COMMON_SOURCES
         core/utils.c
         core/args.c
         core/validation.c
-        cuda/kernel_cuda.cu
+        cuda/kernel_cuda_0.cu
         omp/kernel_naive.c
+        cuda/kernel_cuda_1.cu
 )
 
 if(USE_CUDA)
     enable_language(CUDA)
     set(CMAKE_CUDA_ARCHITECTURES native)
-    add_executable(SCPA ${COMMON_SOURCES} cuda/kernel_cuda.cu)
+    add_executable(SCPA ${COMMON_SOURCES} cuda/kernel_cuda_0.cu)
     target_compile_definitions(SCPA PRIVATE USE_CUDA_BACKEND)
 else()
     find_package(OpenMP REQUIRED)

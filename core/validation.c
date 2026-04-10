@@ -19,7 +19,6 @@ double compute_relative_error(int size, const double *Y_serial, const double *Y_
     return sqrt(norm_diff) / sqrt(norm_serial);
 }
 
-// Firma aggiornata senza 'rank'
 void run_validation(AppArgs args, const double *Y_parallel_global, double parallel_avg_time) {
 
     double gflops = (parallel_avg_time > 0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9) : 0.0;
@@ -67,7 +66,6 @@ void run_validation(AppArgs args, const double *Y_parallel_global, double parall
         printf("[Risultato Finale] SPEEDUP: %.2fx\n", speedup);
         printf("--------------------------------------------------\n");
 
-        // RIGA CRITICA
         printf("DATA_CSV:%.6f,%.6f,%.2e,%.4f,%.4f\n",
                parallel_avg_time, serial_time, rel_error, gflops, speedup);
 

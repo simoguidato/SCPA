@@ -67,8 +67,11 @@ int main(int argc, char *argv[]) {
     setup_device_memory(info.local_M, info.local_N, args.k, local_A, local_X);
 
     if (args.do_warmup) {
-        if (rank == 0) printf("[Kernel] Esecuzione Warm-up...\n");
-        compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+        if (args.kernel_type == 0) {
+            compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+        } else {
+            compute_local_gemm_naive(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
+        }
     }
 
     MPI_Barrier(MPI_COMM_WORLD);

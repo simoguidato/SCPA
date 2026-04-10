@@ -1,6 +1,5 @@
 #include "mpi_grid.h"
 #include <mpi.h>
-#include <stdio.h>
 
 void compute_grid_partition(int M, int N, int rows_grid, int cols_grid, int my_row, int my_col, GridInfo *info) {
     info->global_M = M;

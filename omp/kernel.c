@@ -25,7 +25,7 @@ void compute_local_gemm(int M, int N, int k, const double *A, const double *X, d
         for (int j = 0; j < N; j++) {
             double a_val = A[i * N + j];
 #pragma omp simd safelen(MAX_K)
-            for (int p = 0; p < k; p++) {
+            for ( int p = 0; p < k; p++) {
                 y_local[p] += a_val * X[j * k + p];
             }
         }
