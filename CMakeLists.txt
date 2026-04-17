@@ -17,6 +17,8 @@ set(COMMON_SOURCES
         cuda/kernel_cuda_0.cu
         omp/kernel_naive.c
         cuda/kernel_cuda_1.cu
+        cuda/kernel_cuda_2.cu
+        cuda/kernel_cuda_3.cu
 )
 
 if(USE_CUDA)
