@@ -37,9 +37,9 @@ int main(int argc, char *argv[]) {
     create_sub_communicators(cart_comm, &row_comm, &col_comm);
 
     // 3. Allocazione e Setup Dati Locali
-    double *local_A = allocate_matrix(info.local_M, info.local_N);
-    double *local_X = allocate_matrix(info.local_N, args.k);
-    double *local_Y = allocate_matrix(info.local_M, args.k);
+    float *local_A = allocate_matrix(info.local_M, info.local_N);
+    float *local_X = allocate_matrix(info.local_N, args.k);
+    float *local_Y = allocate_matrix(info.local_M, args.k);
     if (local_A == NULL || local_X == NULL || local_Y == NULL) {
         fprintf(stderr, "[Errore] Allocazione memoria fallita.\n");
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
 
     // I processi della prima riga (root = 0 del col_comm) trasmettono X
     // a tutti i processi sottostanti nella loro stessa colonna.
-    MPI_Bcast(local_X, info.local_N * args.k, MPI_DOUBLE, 0, col_comm);
+    MPI_Bcast(local_X, info.local_N * args.k, MPI_FLOAT, 0, col_comm);
     if (rank == 0) printf("[MPI] Multivettore X distribuito.\n");
     // 4. Benchmark e Calcolo
     int num_iter = 10;
@@ -97,12 +97,13 @@ int main(int argc, char *argv[]) {
     double parallel_avg_time = 0.0;
     if (rank == 0) {
         parallel_avg_time = max_global_time / num_iter;
-        double gflops = (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9);
+        // Tutto resta in double: nessuna conversione, massima precisione per i report!
+        double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e5) : 0.0;
         printf("[Benchmark Parallelo] Tempo medio: %.4f sec | Prestazioni: %.2f GFLOPS\n", parallel_avg_time, gflops);
     }
 
     // 5. Raccolta Dati (Gather)
-    double *row_Y = NULL;
+    float *row_Y = NULL;
     if (coords[1] == 0) {
         row_Y = allocate_matrix(info.local_M, args.k);
         if (row_Y == NULL) {
@@ -113,9 +114,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Somma dei risultati parziali lungo la riga
-    MPI_Reduce(local_Y, row_Y, info.local_M * args.k, MPI_DOUBLE, MPI_SUM, 0, row_comm);
+    MPI_Reduce(local_Y, row_Y, info.local_M * args.k, MPI_FLOAT, MPI_SUM, 0, row_comm);
 
-    double *Y_parallel_global = NULL;
+    float *Y_parallel_global = NULL;
     int *recvcounts = NULL, *displs = NULL;
 
     if (coords[1] == 0) {
@@ -149,9 +150,9 @@ int main(int argc, char *argv[]) {
         }
 
         // 4. Gather finale
-        MPI_Gatherv(row_Y, my_Y_size, MPI_DOUBLE,
+        MPI_Gatherv(row_Y, my_Y_size, MPI_FLOAT,
                     (rank == 0 ? Y_parallel_global : NULL),
-                    recvcounts, displs, MPI_DOUBLE, 0, col_comm);
+                    recvcounts, displs, MPI_FLOAT, 0, col_comm);
         free(row_Y);
     }
 

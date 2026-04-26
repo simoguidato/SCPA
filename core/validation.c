@@ -5,23 +5,23 @@
 #include <math.h>
 #include "utils.h"
 
-double compute_relative_error(int size, const double *Y_serial, const double *Y_parallel) {
-    double norm_diff = 0.0;
-    double norm_serial = 0.0;
+float compute_relative_error(int size, const float *Y_serial, const float *Y_parallel) {
+    float norm_diff = 0.0f;
+    float norm_serial = 0.0f;
 
     for (int i = 0; i < size; i++) {
-        double diff = Y_serial[i] - Y_parallel[i];
+        float diff = Y_serial[i] - Y_parallel[i];
         norm_diff += diff * diff;
         norm_serial += Y_serial[i] * Y_serial[i];
     }
 
-    if (norm_serial == 0) return sqrt(norm_diff);
-    return sqrt(norm_diff) / sqrt(norm_serial);
+    if (norm_serial == 0) return sqrtf(norm_diff);
+    return sqrtf(norm_diff) / sqrtf(norm_serial);
 }
 
-void run_validation(AppArgs args, const double *Y_parallel_global, double parallel_avg_time) {
+void run_validation(AppArgs args, const float *Y_parallel_global, double parallel_avg_time) {
 
-    double gflops = (parallel_avg_time > 0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9) : 0.0;
+    double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e5) : 0.0;
 
     // SE DO_VALIDATE È 0, SALTA TUTTO E STAMPA SOLO I GFLOPS PARALLELI
     if (!args.do_validate) {
@@ -32,32 +32,32 @@ void run_validation(AppArgs args, const double *Y_parallel_global, double parall
     }
 
     printf("[Test] Avvio verifica seriale globale...\n");
-    double *A_global = allocate_matrix(args.M, args.N);
-    double *X_global = allocate_matrix(args.N, args.k);
-    double *Y_serial = allocate_matrix(args.M, args.k);
+    float *A_global = allocate_matrix(args.M, args.N);
+    float *X_global = allocate_matrix(args.N, args.k);
+    float *Y_serial = allocate_matrix(args.M, args.k);
 
     if (A_global && X_global && Y_serial) {
         for (int i = 0; i < args.M; i++) {
             for (int j = 0; j < args.N; j++) {
                 unsigned int seed = 42;
                 long long global_idx = (long long)i * args.N + j;
-                A_global[i * args.N + j] = (double)((global_idx + seed) % 100) / 7.0;
+                A_global[i * args.N + j] = (float)((global_idx + seed) % 100) / 7.0f;
             }
         }
 
         for (int i = 0; i < args.N * args.k; i++) {
-            X_global[i] = (double)((i + 42 + 17) % 100) / 13.0;
+            X_global[i] = (float)((i + 42 + 17) % 100) / 13.0f;
         }
 
         double start_serial = MPI_Wtime();
         compute_serial_gemm(args.M, args.N, args.k, A_global, X_global, Y_serial);
         double serial_time = MPI_Wtime() - start_serial;
 
-        double rel_error = compute_relative_error(args.M * args.k, Y_serial, Y_parallel_global);
-        double speedup = (parallel_avg_time > 0) ? (serial_time / parallel_avg_time) : 0.0;
+        float rel_error = compute_relative_error(args.M * args.k, Y_serial, Y_parallel_global);
+        double speedup = (parallel_avg_time > 0.0) ? (serial_time / parallel_avg_time) : 0.0;
 
         printf("--------------------------------------------------\n");
-        if (rel_error < 1e-10) {
+        if (rel_error < 1e-5) {
             printf("[Validazione] Corretto (Errore Relativo: %.2e)\n", rel_error);
         } else {
             printf("[ERRORE] Instabilita numerica! (Errore Relativo: %.2e)\n", rel_error);

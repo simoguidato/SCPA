@@ -1,8 +1,6 @@
 #ifndef KERNEL_H
 #define KERNEL_H
 
-#include <stdio.h>
-#include <stdlib.h>
 
 // Questa guardia assicura che extern "C" sia visto solo dai compilatori C++ (NVCC)
 // ma non dai compilatori C (GCC), che non capirebbero il comando.
@@ -11,9 +9,10 @@ extern "C" {
 #endif
 
 // Qui mettiamo le funzioni che devono essere chiamate dal main.c
-void setup_device_memory(int M, int N, int k, const double *A, const double *X);
-void free_device_memory(int M, int N, int k, double *Y);
-void compute_local_gemm(int M, int N, int k, const double *A, const double *X, double *Y);
+void setup_device_memory(int M, int N, int k, const float *A, const float *X);
+void free_device_memory(int M, int N, int k, float *Y);
+void compute_local_gemm(int M, int N, int k, const float *A, const float *X, float *Y);
+void compute_local_gemm_naive(int M, int N, int k, const float *A, const float *X, float *Y);
 
 #ifdef __cplusplus
 }

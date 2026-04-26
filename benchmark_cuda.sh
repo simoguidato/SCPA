@@ -29,7 +29,7 @@ for k_info in "${KERNELS[@]}"; do
 
     # 1. Compiliamo l'oggetto CUDA
     # Leggiamo da cuda/ e cerchiamo gli header in include/
-    nvcc -O3 -Iinclude -c "cuda/kernel_cuda_${K_ID}.cu" -o "kernel_cuda_${K_ID}.o" 2>/dev/null
+    nvcc -O3 -arch=native -Iinclude -c "cuda/kernel_cuda_${K_ID}.cu" -o "kernel_cuda_${K_ID}.o"
     if [ $? -ne 0 ]; then echo "ERRORE NVCC (CUDA)!"; exit 1; fi
 
     # 2. Compiliamo i file C e linkiamo tutto
