@@ -5,7 +5,6 @@
 #include <math.h>
 
 float epsilon = 1e-5f;
-// Allocazione allineata a 64 byte per massimizzare MFLOPS [punto 24 e 40]
 float *allocate_matrix(int rows, int cols) {
     float *ptr = NULL;
     size_t size = (size_t)rows * cols * sizeof(float);
@@ -18,11 +17,10 @@ float *allocate_matrix(int rows, int cols) {
     return ptr;
 }
 
-// Generazione locale ripetibile senza lo spreco di srand nel loop [punto 17]
+// Generazione locale ripetibile
 void generate_data_locally(float *local_A, GridInfo info, unsigned int seed) {
     for (int i = 0; i < info.local_M; i++) {
         for (int j = 0; j < info.local_N; j++) {
-            // Formula deterministica basata su posizione globale
             long long global_idx = (long long)(info.offset_M + i) * info.global_N + (info.offset_N + j);
             local_A[i * info.local_N + j] = (float)((global_idx + seed) % 100) / 7.0f;
         }
@@ -36,11 +34,10 @@ int verify_result(const float *Y_parallel, const float *Y_serial, int size) {
             return 0; // Errore nel calcolo
         }
     }
-    return 1; // Successo
+    return 1;
 }
-// Calcola Y = A * X in modo seriale per verificare la correttezza
+// Calcolo Y = A * X in modo seriale per verificare la correttezza
 void compute_serial_gemm(int M, int N, int k, const float *A, const float *X, float *Y) {
-    // Inizializza Y a zero
     for (int i = 0; i < M * k; i++) {
         Y[i] = 0.0f;
     }
@@ -56,7 +53,6 @@ void compute_serial_gemm(int M, int N, int k, const float *A, const float *X, fl
     }
 }
 
-// Generazione deterministica di X basata sull'offset globale delle colonne di A
 void generate_X_locally(float *local_X, int local_N, int k, int offset_N, unsigned int seed) {
     for (int i = 0; i < local_N; i++) {
         for (int j = 0; j < k; j++) {

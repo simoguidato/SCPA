@@ -35,7 +35,6 @@ sns.lineplot(
     palette=['#1f77b4', '#ff7f0e', '#2ca02c']
 )
 
-# Label intelligenti: MxN sopra i punti
 for i, row in df_mean.iterrows():
     plt.annotate(f"{int(row['M'])}x{int(row['N'])}",
                  xy=(row['Total_Elements'], row['GFLOPS']),

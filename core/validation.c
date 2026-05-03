@@ -21,17 +21,16 @@ float compute_relative_error(int size, const float *Y_serial, const float *Y_par
 
 void run_validation(AppArgs args, const float *Y_parallel_global, double parallel_avg_time) {
 
-    double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e5) : 0.0;
+    double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9) : 0.0;
 
     // SE DO_VALIDATE È 0, SALTA TUTTO E STAMPA SOLO I GFLOPS PARALLELI
     if (!args.do_validate) {
-        // Stampiamo 0.0 per i tempi seriali, Python gestirà il ricalcolo
         printf("DATA_CSV:%.6f,%.6f,%.2e,%.4f,%.4f\n",
                parallel_avg_time, 0.0, 0.0, gflops, 0.0);
         return;
     }
 
-    printf("[Test] Avvio verifica seriale globale...\n");
+    printf(" vvio verifica seriale globale...\n");
     float *A_global = allocate_matrix(args.M, args.N);
     float *X_global = allocate_matrix(args.N, args.k);
     float *Y_serial = allocate_matrix(args.M, args.k);

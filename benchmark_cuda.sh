@@ -27,16 +27,10 @@ for k_info in "${KERNELS[@]}"; do
 
     echo -n "Compilazione $MODE... "
 
-    # 1. Compiliamo l'oggetto CUDA
-    # Leggiamo da cuda/ e cerchiamo gli header in include/
+
     nvcc -O3 -arch=native -Iinclude -c "cuda/kernel_cuda_${K_ID}.cu" -o "kernel_cuda_${K_ID}.o"
     if [ $? -ne 0 ]; then echo "ERRORE NVCC (CUDA)!"; exit 1; fi
 
-    # 2. Compiliamo i file C e linkiamo tutto
-    # Leggiamo da core/ e cerchiamo gli header in include/
-    # Aggiungiamo -Dcompute_local_gemm_naive=compute_local_gemm
-    # Questo 'inganna' il compilatore: ogni volta che vede il nome 'naive',
-    # usa la funzione CUDA standard.
     mpicc -O3 -Iinclude -Dcompute_local_gemm_naive=compute_local_gemm \
           core/main.c core/mpi_grid.c core/args.c core/utils.c core/validation.c \
           "kernel_cuda_${K_ID}.o" \
@@ -61,7 +55,7 @@ for size in "${SIZES[@]}"; do
             # WARMUP
             mpirun -np 1 "./app_cuda_${K_ID}" $M $N $k 1 0 0 > /dev/null 2>&1
 
-            for run in {1..5}; do
+            for run in {1..3}; do
                 [ "$run" -eq 1 ] && VAL=1 || VAL=0
                 echo "Run $run: $MODE | ${M}x${N} | k=$k"
 

@@ -29,18 +29,18 @@ PALETTE_GEO = {
     'Tall (M >> N)':    '#3498db',
     'Wide (N >> M)':    '#2ecc71',
 }
-KERNELS = ['CUDA_Naive', 'CUDA_Opt2D', 'CUDA_Tiled']
+KERNELS = ['CUDA_Naive', 'CUDA_Opt2D', 'CUDA_Tiled', 'CUDA_WarpRow']
 KERNEL_TITLES = {
     'CUDA_Naive':  'Kernel 0 – Baseline 1D (un thread per riga)',
     'CUDA_Opt2D':  'Kernel 1 – Griglia 2D (un thread per elemento)',
     'CUDA_Tiled':  'Kernel 2 – Tiling con Shared Memory',
+    'CUDA_WarpRow': 'Kernel 3 – Warp-Row (Register Tiling)',
 }
 
 sns.set_theme(style="whitegrid", font_scale=1.05)
 
-fig, axes = plt.subplots(3, 1, figsize=(13, 16), sharex=True)
+fig, axes = plt.subplots(4, 1, figsize=(13, 20), sharex=True)
 
-# Calcola posizioni X numeriche per asse condiviso
 x_pos = {s: i for i, s in enumerate(SIZE_ORDER)}
 
 for row_idx, kernel in enumerate(KERNELS):
@@ -49,14 +49,12 @@ for row_idx, kernel in enumerate(KERNELS):
     subset['x'] = subset['Size_Label'].map(x_pos)
     subset = subset.sort_values('x')
 
-    # Linee per geometria
     for geo, grp in subset.groupby('Geometria', observed=True):
         grp = grp.sort_values('x')
         ax.plot(grp['x'], grp['GFLOPS'], marker='s', markersize=10,
                 linewidth=2.2, color=PALETTE_GEO[geo], label=geo,
                 linestyle='--' if 'Wide' in geo else ('-' if 'Quad' in geo else ':'))
 
-    # Annotazioni valore
     for _, r in subset.iterrows():
         ax.annotate(f"{r['GFLOPS']:.0f}",
                     xy=(r['x'], r['GFLOPS']),
@@ -66,12 +64,13 @@ for row_idx, kernel in enumerate(KERNELS):
 
     ax.set_title(KERNEL_TITLES[kernel], fontsize=13, fontweight='bold', pad=8)
     ax.set_ylabel('GFLOPS')
-    ax.set_ylim(0, df_k32['GFLOPS'].max() * 1.2)
+
+    max_val = subset['GFLOPS'].max() if not subset.empty else 100
+    ax.set_ylim(0, max_val * 1.25)
 
     if row_idx == 0:
         ax.legend(title='Geometria', loc='upper left', fontsize=10, title_fontsize=11)
 
-# Etichette X solo sull'ultimo subplot
 axes[-1].set_xticks(range(len(SIZE_ORDER)))
 axes[-1].set_xticklabels(SIZE_ORDER, rotation=35, ha='right', fontsize=11)
 axes[-1].set_xlabel('Taglia Matrice (M × N)', fontsize=12)

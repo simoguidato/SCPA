@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // =========================================================================
 // KERNEL 1: Griglia 2D + Registro Locale + Coalescing su X
@@ -30,7 +31,17 @@ void setup_device_memory(int M, int N, int k, const float *A, const float *X) {
     size_t size_A = (size_t)M * N * sizeof(float);
     size_t size_X = (size_t)N * k * sizeof(float);
     size_t size_Y = (size_t)M * k * sizeof(float);
+    int num_devices;
+    cudaGetDeviceCount(&num_devices);
+    int rank = 0;
+    if (getenv("OMPI_COMM_WORLD_RANK")) {
+        rank = atoi(getenv("OMPI_COMM_WORLD_RANK"));
+    } else if (getenv("PMI_RANK")) {
+        rank = atoi(getenv("PMI_RANK"));
+    }
 
+    // Associa il processo alla GPU corretta (es. Rank 0 -> GPU 0, Rank 1 -> GPU 1)
+    CHECK_CUDA(cudaSetDevice(rank % num_devices));
     CHECK_CUDA(cudaMalloc((void **)&d_A, size_A));
     CHECK_CUDA(cudaMalloc((void **)&d_X, size_X));
     CHECK_CUDA(cudaMalloc((void **)&d_Y, size_Y));
@@ -50,16 +61,11 @@ void compute_local_gemm(int M, int N, int k, const float *A, const float *X, flo
 
     gemm_cuda_kernel_1<<<blocksPerGrid, threadsPerBlock>>>(M, N, k, d_A, d_X, d_Y);
 
-    // Protezione totale
     CHECK_CUDA(cudaGetLastError());
-    // Sincronizzazione fondamentale!
     CHECK_CUDA(cudaDeviceSynchronize());
-
-    // RIMOSSA LA CUDAMEMCPY DA QUI
 }
 
 void free_device_memory(int M, int N, int k, float *Y) {
-    // TRASFERIMENTO SPOSTATO QUI, FUORI DAL LOOP DI TIMING
     CHECK_CUDA(cudaMemcpy(Y, d_Y, (size_t)M * k * sizeof(float), cudaMemcpyDeviceToHost));
 
     CHECK_CUDA(cudaFree(d_A));

@@ -21,11 +21,13 @@ PALETTE = {
     'CUDA_Naive':  '#4b0082',   # viola scuro
     'CUDA_Opt2D':  '#c0396b',   # magenta
     'CUDA_Tiled':  '#f08030',   # arancio
+    'CUDA_WarpRow': '#9b59b6'
 }
 LABELS = {
     'CUDA_Naive':  'Kernel 0 – 1D (baseline)',
     'CUDA_Opt2D':  'Kernel 1 – 2D Grid',
     'CUDA_Tiled':  'Kernel 2 – Shared Memory Tiling',
+    'CUDA_WarpRow': 'WarpRow – Reg Tiling'
 }
 
 sns.set_theme(style="darkgrid", font_scale=1.05)
@@ -57,10 +59,8 @@ for idx, size in enumerate(SIZE_ORDER):
     ax.set_xticklabels([LABELS[m].split(' – ')[0] for m in subset['Mode']], rotation=20, ha='right', fontsize=10)
     ax.set_ylim(0, df_k32['GFLOPS'].max() * 1.18)
 
-# Nasconde l'ottava cella
 axes[7].set_visible(False)
 
-# Legenda manuale
 from matplotlib.patches import Patch
 legend_elements = [Patch(facecolor=PALETTE[m], label=LABELS[m]) for m in PALETTE]
 fig.legend(handles=legend_elements, loc='lower right', bbox_to_anchor=(0.97, 0.08),
@@ -88,7 +88,6 @@ for idx, size in enumerate(SIZES_4):
         grp = grp.sort_values('k')
         ax.plot(grp['k'], grp['GFLOPS'], marker='o', linewidth=2.5, markersize=8,
                 color=PALETTE[mode], label=LABELS[mode])
-        # Annotazione valore a k=32
         last = grp[grp['k'] == 32]
         if not last.empty:
             ax.annotate(f"{last['GFLOPS'].values[0]:.0f}",

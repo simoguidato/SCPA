@@ -21,7 +21,7 @@ df_cmp['Kernel_Version'] = df_cmp['Mode'].apply(
 sns.set_theme(style="whitegrid")
 
 # ==========================================
-# GRAFICO A: k=32 — FacetGrid per tutte le taglie
+# GRAFICO A: k=32
 # ==========================================
 print("Generando Grafico A (k=32, tutte le taglie)...")
 df_k32 = df_cmp[df_cmp['k'] == 32]
@@ -42,7 +42,7 @@ plt.close()
 print("--> confronto_kernel_1_k32_ALL_sizes.png salvato")
 
 # ==========================================
-# GRAFICO B: Matrice 4000x4000 — FacetGrid per tutti i k
+# GRAFICO B: Matrice 4000x4000
 # ==========================================
 print("Generando Grafico B (4000x4000, tutti i k)...")
 matrix_target = '4000x4000' if '4000x4000' in df_cmp['Size_Label'].cat.categories else \
@@ -66,7 +66,7 @@ plt.close()
 print("--> confronto_kernel_2_ALL_k.png salvato")
 
 # ==========================================
-# GRAFICO C: Ratio Ottimizzato/Naive (linee) — per vedere dove il miglioramento è maggiore
+# GRAFICO C:  per vedere dove il miglioramento è maggiore
 # ==========================================
 print("Generando Grafico C (Ratio Opt/Naive per geometria)...")
 pivot = df_cmp.groupby(['Size_Label', 'k', 'Kernel_Version'])['GFLOPS'].mean().unstack('Kernel_Version')

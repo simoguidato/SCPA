@@ -12,18 +12,15 @@ df['Config'] = df['Mode'] + " (NP:" + df['MPI_Ranks'].astype(str) + ", Thr:" + d
 df['Size_Label'] = df['M'].astype(str) + "x" + df['N'].astype(str)
 df['Total_Cores'] = df['MPI_Ranks'] * df['OMP_Threads']
 
-# ECCO LA RIGA CHE MANCAVA!
 df['Total_Elements'] = df['M'] * df['N']
 
 size_order = ['1000x250', '4000x1000', '8000x2000',   # tall
               '1000x1000', '2000x2000', '4000x4000','8000x8000',   # quadrate
               '250x1000', '1000x4000', '2000x8000']    # wide
 
-# Tieni solo le taglie presenti nel CSV
 size_order = [s for s in size_order if s in df['Size_Label'].unique()]
 df['Size_Label'] = pd.Categorical(df['Size_Label'], categories=size_order, ordered=True)
 
-# Ricalcolo SpeedUp robusto (observed=False per rimuovere il FutureWarning)
 serial_means = df[(df['Mode'] == 'Serial') & (df['Run'] > 1)].groupby(
     ['Size_Label', 'k'], observed=False)['ParallelTime'].mean().reset_index()
 serial_means.rename(columns={'ParallelTime': 'BaselineTime'}, inplace=True)
@@ -63,11 +60,8 @@ def assegna_geometria(row):
     else: return 'Altro'
 
 df['Geometria'] = df.apply(assegna_geometria, axis=1)
-
-# Filtriamo per la configurazione ottimale (Hybrid 2x20) per il confronto taglie
 df_plot = df[(df['Mode'] == 'Opt_Hybrid') & (df['MPI_Ranks'] == 2)].copy()
 
-# Usiamo col='Geometria' per separare i subplot ed evitare l'effetto "W"
 g = sns.relplot(
     data=df_plot,
     x='Total_Elements', y='GFLOPS', hue='k',
@@ -80,7 +74,7 @@ g.set_axis_labels("Elementi Totali (M x N) - Scala Log", "Prestazioni (GFLOPS)")
 g.set_titles("{col_name}", fontweight='bold')
 
 for ax in g.axes.flat:
-    ax.set_xscale('log') # Fondamentale per la monotonicità
+    ax.set_xscale('log')
 
 g.fig.suptitle("Analisi Scalabilità Taglia per Geometria e k", y=1.05, fontsize=16, fontweight='bold')
 plt.savefig('report_2_GFLOPS_vs_Size_Faceted.png', dpi=300, bbox_inches='tight')
@@ -116,7 +110,6 @@ g = sns.FacetGrid(df_parallel[df_parallel['Size_Label'] == matrix_for_speedup],
 g.map_dataframe(sns.barplot, x='Config', y='Efficiency',
                 hue='Config', palette='magma', legend=False)
 
-# Linea ideale su ogni pannello
 for ax in g.axes.flat:
     ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.6, linewidth=1.5)
     ax.tick_params(axis='x', rotation=30)

@@ -48,22 +48,17 @@ int main(int argc, char *argv[]) {
 
     // Tutti generano la loro fetta di A
     generate_data_locally(local_A, info, 42);
-
-    // RISPETTO DELLE SPECIFICHE DEL PROGETTO:
-    // "si può assumere che X occupi una sola riga di questa griglia"
     if (coords[0] == 0) {
-        // Solo i processi nella PRIMA RIGA della griglia generano X
         generate_X_locally(local_X, info.local_N, args.k, info.offset_N, 42);
     }
 
-    // I processi della prima riga (root = 0 del col_comm) trasmettono X
-    // a tutti i processi sottostanti nella loro stessa colonna.
+    // I processi della prima riga (root = 0 del col_comm) trasmettono X a tutti i processi sottostanti nella loro stessa colonna.
     MPI_Bcast(local_X, info.local_N * args.k, MPI_FLOAT, 0, col_comm);
     if (rank == 0) printf("[MPI] Multivettore X distribuito.\n");
     // 4. Benchmark e Calcolo
     int num_iter = 10;
 
-    // --> SPOSTIAMO I DATI SULLA GPU (Se usiamo OpenMP, non fa nulla)
+    // --> SPOSTIAMO I DATI SULLA GPU
     setup_device_memory(info.local_M, info.local_N, args.k, local_A, local_X);
 
     if (args.do_warmup) {
@@ -88,8 +83,6 @@ int main(int argc, char *argv[]) {
 
     // --> RIPORTIAMO I DATI SULLA CPU
     free_device_memory(info.local_M, info.local_N, args.k, local_Y);
-
-    // Calcolo tempi e GFLOPS...
     double local_time = end_time - start_time;
     double max_global_time = 0.0;
     MPI_Reduce(&local_time, &max_global_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -97,8 +90,7 @@ int main(int argc, char *argv[]) {
     double parallel_avg_time = 0.0;
     if (rank == 0) {
         parallel_avg_time = max_global_time / num_iter;
-        // Tutto resta in double: nessuna conversione, massima precisione per i report!
-        double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e5) : 0.0;
+        double gflops = (parallel_avg_time > 0.0) ? (2.0 * args.M * args.N * args.k) / (parallel_avg_time * 1e9) : 0.0;
         printf("[Benchmark Parallelo] Tempo medio: %.4f sec | Prestazioni: %.2f GFLOPS\n", parallel_avg_time, gflops);
     }
 
@@ -121,8 +113,6 @@ int main(int argc, char *argv[]) {
 
     if (coords[1] == 0) {
         int my_Y_size = info.local_M * args.k;
-
-        // 1. Il Master alloca TUTTO subito (così l'IDE non si confonde)
         if (rank == 0) {
             recvcounts = malloc(dims[0] * sizeof(int));
             displs = malloc(dims[0] * sizeof(int));
@@ -135,12 +125,10 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // 2. Colleziona le dimensioni
         MPI_Gather(&my_Y_size, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, col_comm);
 
-        // 3. Il Master calcola gli offset
+        //  Il Master calcola gli offset
         if (rank == 0) {
-            // MAGIA NERA PER L'IDE: L'asserzione lo costringe a fidarsi e azzera i warning
             assert(displs != NULL && recvcounts != NULL);
 
             displs[0] = 0;
