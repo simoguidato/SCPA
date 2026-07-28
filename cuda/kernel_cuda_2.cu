@@ -3,6 +3,7 @@
 #include <device_launch_parameters.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "cuda_device_utils.cuh"
 
 #define TILE_SIZE 32
 
@@ -63,17 +64,7 @@ void setup_device_memory(int M, int N, int k, const float *A, const float *X) {
     size_t size_A = (size_t)M * N * sizeof(float);
     size_t size_X = (size_t)N * k * sizeof(float);
     size_t size_Y = (size_t)M * k * sizeof(float);
-    int num_devices;
-    cudaGetDeviceCount(&num_devices);
-    int rank = 0;
-    if (getenv("OMPI_COMM_WORLD_RANK")) {
-        rank = atoi(getenv("OMPI_COMM_WORLD_RANK"));
-    } else if (getenv("PMI_RANK")) {
-        rank = atoi(getenv("PMI_RANK"));
-    }
-
-    // Associa il processo alla GPU corretta (es. Rank 0 -> GPU 0, Rank 1 -> GPU 1)
-    CHECK_CUDA(cudaSetDevice(rank % num_devices));
+    cuda_select_device_or_die();
     CHECK_CUDA(cudaMalloc((void **)&d_A, size_A));
     CHECK_CUDA(cudaMalloc((void **)&d_X, size_X));
     CHECK_CUDA(cudaMalloc((void **)&d_Y, size_Y));
@@ -83,8 +74,6 @@ void setup_device_memory(int M, int N, int k, const float *A, const float *X) {
 }
 
 void compute_local_gemm(int M, int N, int k, const float *A, const float *X, float *Y) {
-    CHECK_CUDA(cudaMemset(d_Y, 0, (size_t)M * k * sizeof(float)));
-
     dim3 threadsPerBlock(TILE_SIZE, TILE_SIZE);
     dim3 blocksPerGrid((k + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
 
@@ -92,6 +81,11 @@ void compute_local_gemm(int M, int N, int k, const float *A, const float *X, flo
     CHECK_CUDA(cudaGetLastError());
     // Sincronizziamo per essere sicuri che il calcolo sia finito prima di fermare il timer nel main
     CHECK_CUDA(cudaDeviceSynchronize());
+}
+
+void compute_local_gemm_naive(int M, int N, int k, const float *A,
+                              const float *X, float *Y) {
+    compute_local_gemm(M, N, k, A, X, Y);
 }
 
 void free_device_memory(int M, int N, int k, float *Y) {

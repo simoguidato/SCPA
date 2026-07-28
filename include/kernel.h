@@ -18,14 +18,16 @@ void compute_local_gemm_naive(int M, int N, int k, const float *A, const float *
 // La macro CHECK_CUDA rimane protetta per NVCC
 #ifdef __CUDACC__
 #include <cuda_runtime.h>
-#define CHECK_CUDA(call) { \
+#include <stdio.h>
+#include <stdlib.h>
+#define CHECK_CUDA(call) do { \
 cudaError_t err = call; \
 if (err != cudaSuccess) { \
 fprintf(stderr, "CUDA Error in %s at line %d: %s (%s)\n", \
 __FILE__, __LINE__, cudaGetErrorName(err), cudaGetErrorString(err)); \
 exit(EXIT_FAILURE); \
 } \
-}
+} while (0)
 #endif
 
 #endif

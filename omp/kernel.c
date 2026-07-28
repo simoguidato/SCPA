@@ -1,15 +1,19 @@
 #include "kernel.h"
-#include <assert.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 //#define BLOCK_SIZE 32
-#define MAX_K 32
+#define MAX_K 128  // Aumentato da 32 a 128
 void setup_device_memory(int M, int N, int k, const float *A, const float *X) {}
 void free_device_memory(int M, int N, int k, float *Y) {}
 
 void compute_local_gemm(int M, int N, int k, const float *A, const float *X, float *Y) {
 
-    assert(k <= MAX_K && "Errore: k supera la dimensione massima prevista (MAX_K=32)");
+    if (k > MAX_K) {
+        fprintf(stderr, "Errore: k=%d supera MAX_K=%d nel kernel OpenMP.\n", k, MAX_K);
+        exit(EXIT_FAILURE);
+    }
 
     // Parallelismo puro sulle righe M.
 #pragma omp parallel for schedule(static) default(none) shared(M, N, k, A, X, Y)

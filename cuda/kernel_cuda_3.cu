@@ -3,6 +3,7 @@
 #include <device_launch_parameters.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "cuda_device_utils.cuh"
 
 // =========================================================================
 // KERNEL 4: Warp-Row / Register Tiling (Zero Shared Memory Sync)
@@ -29,6 +30,19 @@ __global__ void gemm_warp_row_register(int M, int N, int k, const float* __restr
     }
 }
 
+__global__ void gemm_naive_2d(int M, int N, int k, const float *A,
+                              const float *X, float *Y) {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    if (row < M && col < k) {
+        float sum = 0.0f;
+        for (int j = 0; j < N; ++j) {
+            sum += A[row * N + j] * X[j * k + col];
+        }
+        Y[row * k + col] = sum;
+    }
+}
+
 // =========================================================================
 // INTERFACCIA CPU-GPU
 // =========================================================================
@@ -40,17 +54,7 @@ void setup_device_memory(int M, int N, int k, const float *A, const float *X) {
     size_t size_A = (size_t)M * N * sizeof(float);
     size_t size_X = (size_t)N * k * sizeof(float);
     size_t size_Y = (size_t)M * k * sizeof(float);
-    int num_devices;
-    cudaGetDeviceCount(&num_devices);
-    int rank = 0;
-    if (getenv("OMPI_COMM_WORLD_RANK")) {
-        rank = atoi(getenv("OMPI_COMM_WORLD_RANK"));
-    } else if (getenv("PMI_RANK")) {
-        rank = atoi(getenv("PMI_RANK"));
-    }
-
-    // Associa il processo alla GPU corretta (es. Rank 0 -> GPU 0, Rank 1 -> GPU 1)
-    CHECK_CUDA(cudaSetDevice(rank % num_devices));
+    cuda_select_device_or_die();
     CHECK_CUDA(cudaMalloc((void **)&d_A, size_A));
     CHECK_CUDA(cudaMalloc((void **)&d_X, size_X));
     CHECK_CUDA(cudaMalloc((void **)&d_Y, size_Y));
@@ -60,8 +64,6 @@ void setup_device_memory(int M, int N, int k, const float *A, const float *X) {
 }
 
 void compute_local_gemm(int M, int N, int k, const float *A, const float *X, float *Y) {
-    CHECK_CUDA(cudaMemset(d_Y, 0, (size_t)M * k * sizeof(float)));
-
     // CONFIGURAZIONE DELLA GRIGLIA "A WARP"
     // blocchi 2D: X=32 (la larghezza fissa di un warp), Y=8 (8 warp per blocco)
     // Totale thread per blocco = 256.
@@ -76,7 +78,12 @@ void compute_local_gemm(int M, int N, int k, const float *A, const float *X, flo
 }
 
 void compute_local_gemm_naive(int M, int N, int k, const float *A, const float *X, float *Y) {
-    compute_local_gemm(M, N, k, A, X, Y);
+    dim3 threadsPerBlock(32, 8);
+    dim3 blocksPerGrid((k + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (M + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    gemm_naive_2d<<<blocksPerGrid, threadsPerBlock>>>(M, N, k, d_A, d_X, d_Y);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
 }
 
 void free_device_memory(int M, int N, int k, float *Y) {

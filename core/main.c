@@ -8,6 +8,18 @@
 #include "validation.h"
 #include <assert.h>
 
+static void run_local_kernel(const AppArgs *args, const GridInfo *info,
+                             const float *local_A, const float *local_X,
+                             float *local_Y) {
+    if (args->kernel_type == 0) {
+        compute_local_gemm(info->local_M, info->local_N, args->k,
+                           local_A, local_X, local_Y);
+    } else {
+        compute_local_gemm_naive(info->local_M, info->local_N, args->k,
+                                 local_A, local_X, local_Y);
+    }
+}
+
 int main(int argc, char *argv[]) {
     int rank, num_procs;
     MPI_Init(&argc, &argv);
@@ -16,10 +28,12 @@ int main(int argc, char *argv[]) {
 
     // 1. Setup Argomenti
     AppArgs args = parse_arguments(argc, argv, rank, num_procs);
-
+    
     // 2. Setup Topologia MPI
-    int dims[2] = {0, 0};
-    MPI_Dims_create(num_procs, 2, dims);
+    int dims[2] = {args.grid_rows, args.grid_cols};
+    if (dims[0] == 0 && dims[1] == 0) {
+        MPI_Dims_create(num_procs, 2, dims);   // fallback automatico
+    }
     int periods[2] = {0, 0};
     MPI_Comm cart_comm, row_comm, col_comm;
     MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &cart_comm);
@@ -62,23 +76,16 @@ int main(int argc, char *argv[]) {
     setup_device_memory(info.local_M, info.local_N, args.k, local_A, local_X);
 
     if (args.do_warmup) {
-        if (args.kernel_type == 0) {
-            compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
-        } else {
-            compute_local_gemm_naive(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
-        }
+        run_local_kernel(&args, &info, local_A, local_X, local_Y);
     }
 
+    // La sincronizzazione iniziale non fa parte della misura. Il tempo che
+    // segue contiene esclusivamente le invocazioni del kernel locale.
     MPI_Barrier(MPI_COMM_WORLD);
     double start_time = MPI_Wtime();
     for (int it = 0; it < num_iter; it++) {
-        if (args.kernel_type == 0) {
-            compute_local_gemm(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
-        } else {
-            compute_local_gemm_naive(info.local_M, info.local_N, args.k, local_A, local_X, local_Y);
-        }
+        run_local_kernel(&args, &info, local_A, local_X, local_Y);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
     double end_time = MPI_Wtime();
 
     // --> RIPORTIAMO I DATI SULLA CPU
@@ -94,9 +101,10 @@ int main(int argc, char *argv[]) {
         printf("[Benchmark Parallelo] Tempo medio: %.4f sec | Prestazioni: %.2f GFLOPS\n", parallel_avg_time, gflops);
     }
 
-    // 5. Raccolta Dati (Gather)
+    // 5. Raccolta dati per la sola validazione. La riduzione e il gather sono
+    // volutamente fuori dal benchmark del kernel locale.
     float *row_Y = NULL;
-    if (coords[1] == 0) {
+    if (args.do_validate && coords[1] == 0) {
         row_Y = allocate_matrix(info.local_M, args.k);
         if (row_Y == NULL) {
             fprintf(stderr, "[Errore] Allocazione fallita per row_Y.\n");
@@ -105,13 +113,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Somma dei risultati parziali lungo la riga
-    MPI_Reduce(local_Y, row_Y, info.local_M * args.k, MPI_FLOAT, MPI_SUM, 0, row_comm);
-
     float *Y_parallel_global = NULL;
     int *recvcounts = NULL, *displs = NULL;
 
-    if (coords[1] == 0) {
+    if (args.do_validate) {
+        // Somma dei risultati parziali lungo la riga.
+        MPI_Reduce(local_Y, row_Y, info.local_M * args.k, MPI_FLOAT,
+                   MPI_SUM, 0, row_comm);
+    }
+
+    if (args.do_validate && coords[1] == 0) {
         int my_Y_size = info.local_M * args.k;
         if (rank == 0) {
             recvcounts = malloc(dims[0] * sizeof(int));
