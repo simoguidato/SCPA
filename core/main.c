@@ -62,18 +62,31 @@ int main(int argc, char *argv[]) {
 
     // Tutti generano la loro fetta di A
     generate_data_locally(local_A, info, 42);
+    // I processi della prima riga generano localmente la propria porzione di X
+    // (stessa logica stateless di A); l'unica comunicazione reale è la Bcast
+    // lungo la colonna. Cronometriamo solo questa fase, a parte rispetto al
+    // benchmark del kernel (come da specifica: puo' essere misurata a parte).
+    MPI_Barrier(MPI_COMM_WORLD);
+    double distrib_start = MPI_Wtime();
     if (coords[0] == 0) {
         generate_X_locally(local_X, info.local_N, args.k, info.offset_N, 42);
     }
-
-    // I processi della prima riga (root = 0 del col_comm) trasmettono X a tutti i processi sottostanti nella loro stessa colonna.
     MPI_Bcast(local_X, info.local_N * args.k, MPI_FLOAT, 0, col_comm);
+    double distrib_end = MPI_Wtime();
+    double local_distrib_time = distrib_end - distrib_start;
+    double max_distrib_time = 0.0;
+    MPI_Reduce(&local_distrib_time, &max_distrib_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
     if (rank == 0) printf("[MPI] Multivettore X distribuito.\n");
     // 4. Benchmark e Calcolo
     int num_iter = 10;
 
-    // --> SPOSTIAMO I DATI SULLA GPU
+    // --> SPOSTIAMO I DATI SULLA GPU (cronometrato a parte, non incluso nel
+    // benchmark del kernel, come richiesto dalla specifica)
+    MPI_Barrier(MPI_COMM_WORLD);
+    double h2d_start = MPI_Wtime();
     setup_device_memory(info.local_M, info.local_N, args.k, local_A, local_X);
+    double h2d_end = MPI_Wtime();
 
     if (args.do_warmup) {
         run_local_kernel(&args, &info, local_A, local_X, local_Y);
@@ -88,8 +101,19 @@ int main(int argc, char *argv[]) {
     }
     double end_time = MPI_Wtime();
 
-    // --> RIPORTIAMO I DATI SULLA CPU
+    // --> RIPORTIAMO I DATI SULLA CPU (cronometrato a parte)
+    double d2h_start = MPI_Wtime();
     free_device_memory(info.local_M, info.local_N, args.k, local_Y);
+    double d2h_end = MPI_Wtime();
+
+    double local_transfer_time = (h2d_end - h2d_start) + (d2h_end - d2h_start);
+    double max_transfer_time = 0.0;
+    MPI_Reduce(&local_transfer_time, &max_transfer_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        printf("EXTRA_TIMES_CSV:%.6f,%.6f\n", max_distrib_time, max_transfer_time);
+    }
+
     double local_time = end_time - start_time;
     double max_global_time = 0.0;
     MPI_Reduce(&local_time, &max_global_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);

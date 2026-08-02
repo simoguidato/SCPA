@@ -30,7 +30,7 @@ void run_validation(AppArgs args, const float *Y_parallel_global, double paralle
         return;
     }
 
-    printf(" vvio verifica seriale globale...\n");
+    printf("Avvio verifica seriale globale...\n");
     float *A_global = allocate_matrix(args.M, args.N);
     float *X_global = allocate_matrix(args.N, args.k);
     float *Y_serial = allocate_matrix(args.M, args.k);

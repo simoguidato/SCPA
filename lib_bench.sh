@@ -18,6 +18,33 @@ extract_data_csv() {
     sed -n 's/^DATA_CSV://p' <<< "$1"
 }
 
+# extract_extra_times <output_testuale_del_programma>
+# stampa su stdout "distrib_time,transfer_time" (dalla riga EXTRA_TIMES_CSV:)
+extract_extra_times() {
+    sed -n 's/^EXTRA_TIMES_CSV://p' <<< "$1"
+}
+
+TIMING_CSV_HEADER="Mode,Backend,M,N,k,MPI_Ranks,Run,ParallelTime,DistribTime,TransferTime"
+
+init_timing_csv() {
+    echo "$TIMING_CSV_HEADER" > "$1"
+}
+
+# append_timing_row <csv_path> <mode> <backend> <M> <N> <k> <np> <run> <raw_data_csv> <extra_times_raw>
+# <raw_data_csv> è l'output di extract_data_csv (ParallelTime,SequentialTime,...):
+# da lì prendiamo solo il primo campo (ParallelTime).
+append_timing_row() {
+    local csv=$1 mode=$2 backend=$3 M=$4 N=$5 k=$6 np=$7 run=$8 raw=$9
+    shift 9
+    local extra=$1
+    if [ -z "$extra" ] || [ -z "$raw" ]; then
+        echo "[Errore] dati mancanti per timing: $mode $backend M=$M N=$N k=$k np=$np run=$run" >&2
+        return 1
+    fi
+    local ptime="${raw%%,*}"
+    echo "$mode,$backend,$M,$N,$k,$np,$run,$ptime,$extra" >> "$csv"
+}
+
 # append_row <csv_path> <mode> <backend> <M> <N> <k> <np> <grid_rows> <grid_cols> \
 #            <omp_threads> <cuda_arch> <run> <raw_data_csv>
 append_row() {

@@ -1,7 +1,6 @@
 #!/bin/bash
 # ==============================================================================
 # run_omp_benchmark.sh — Benchmark MPI + OpenMP
-# Sostituisce benchmark.sh e openmp_kgrandi.sh in un unico script parametrico.
 # ==============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -15,23 +14,22 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 init_csv "$OUTPUT_FILE"
 
 # Config: "Nome NP OMP KernelType[0=Opt,1=Naive] GridRows GridCols"
-# GridRows/GridCols=0 0 => griglia automatica (MPI_Dims_create)
 CONFIGS=(
-    "Serial        1  1              0 0 0"
-    "Naive_SMP     1  ${NPROC_NODE}  1 0 0"
+    "Serial        1  1                 0 0 0"
+    "Naive_SMP     1  ${NPROC_NODE}     1 0 0"
     "Naive_Hybrid  2  $((NPROC_NODE/2)) 1 0 0"
-    "Opt_SMP       1  ${NPROC_NODE}  0 0 0"
+    "Opt_SMP       1  ${NPROC_NODE}     0 0 0"
     "Opt_Hybrid    2  $((NPROC_NODE/2)) 0 0 0"
     "Opt_Hybrid    4  $((NPROC_NODE/4)) 0 0 0"
     "Opt_Hybrid    8  $((NPROC_NODE/8)) 0 0 0"
-    # Stesso -np=8, griglie diverse: verifica esplicita del requisito
-    # "griglia con estensione scelta dall'utente"
-    "Opt_Grid1x8   8  1              0 1 8"
-    "Opt_Grid8x1   8  1              0 8 1"
-    "Opt_Grid2x4   8  1              0 2 4"
+    # Test topologie esplicite richieste dalle specifiche
+    "Opt_Grid1x8   8  1                 0 1 8"
+    "Opt_Grid8x1   8  1                 0 8 1"
+    "Opt_Grid2x4   8  1                 0 2 4"
 )
 
 K_SETS=("small:3 6 8 20 32" "large:64 128")
+# Le tue matrici specifiche
 SIZES=("2000 2000" "2000 4000" "4000 2000" "6000 2000" "4000 4000" "2000 6000")
 
 export OMP_PLACES=cores
@@ -48,7 +46,6 @@ for k_set in "${K_SETS[@]}"; do
                 read -r MODE NP OMP KTYPE GR GC <<< "$config"
                 export OMP_NUM_THREADS=$OMP
 
-                # Sintassi Hydra (MPICH): niente --map-by (è OpenMPI-only)
                 BIND_FLAGS=()
                 if [ "$NP" -gt 1 ]; then
                     BIND_FLAGS=(-bind-to socket)
@@ -68,4 +65,4 @@ for k_set in "${K_SETS[@]}"; do
     done
 done
 
-echo "Benchmark OMP completato: $OUTPUT_FILE"
+echo "Benchmark OMP completato con successo: $OUTPUT_FILE"
