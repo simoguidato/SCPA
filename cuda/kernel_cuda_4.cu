@@ -4,23 +4,14 @@
 #include "kernel.h"
 #include "utils.h"
 #include "cuda_device_utils.cuh"
-
+//DA FINIRE E RIFARE ESECUZIONE CUDA E MODIFICARE LA RELAZIONE
 // ═══════════════════════════════════════════════════════════════
 //  CONFIGURAZIONE THREAD
-//
-//  FIX rispetto alla versione originale:
-//  row_i viene mappato su threadIdx.X (la dimensione che varia
-//  più veloce all'interno del warp in CUDA).
-//  Nella versione originale era su threadIdx.y → solo 8 indirizzi
-//  distinti per warp invece di 32 → accesso non coalescente.
-//
-//  blockDim(32, 4):
-//    threadIdx.x → row_i  (varia veloce, 32 valori distinti per warp)
-//    threadIdx.y → col_k  (varia lento,  4  valori distinti per warp)
-//  Accesso d_AT[l*M + row_i]: 32 indirizzi contigui → COALESCENTE ✓
+//  Utilizziamo un Tile quadrato 32x32 per ottimizzare sia la
+//  lettura coalescente (su AT) che la scrittura coalescente (su Y)
+//  attraverso la tecnica del "Corner Turn".
 // ═══════════════════════════════════════════════════════════════
-#define K4_BDIM_ROW 32   // lungo x → row_i (coalescing)
-#define K4_BDIM_K    4   // lungo y → col_k
+#define TILE_DIM 32
 
 // ═══════════════════════════════════════════════════════════════
 //  HELPER ERRORI CUDA
@@ -36,117 +27,131 @@ static void check_cuda_err(cudaError_t err, const char* func,
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  MEMORIA DEVICE PERSISTENTE TRA setup/compute/free
-//  (stesso pattern degli altri kernel del progetto)
-// ═══════════════════════════════════════════════════════════════
-static float *d_AT = NULL;   // trasposta A: N×M sul device
-static float *d_X  = NULL;   // X: N×k sul device
-static float *d_Y  = NULL;   // Y: M×k sul device
+// Puntatori globali per mantenere i dati tra le fasi
+static float *d_A  = NULL; // A originale (temporanea su GPU)
+static float *d_AT = NULL; // A trasposta su GPU
+static float *d_X  = NULL; // Multivettore X
+static float *d_Y  = NULL; // Risultato Y
 
 // ═══════════════════════════════════════════════════════════════
-//  TRASPOSIZIONE SU HOST
-//  Converte A (M×N, row-major) in A_T (N×M, row-major)
-//  dove A_T[j][i] = A[i][j]  →  A_T[j*M + i] = A[i*N + j]
+//  1. KERNEL DI TRASPOSIZIONE (SU GPU)
+//  Eseguito in fase di setup. Sostituisce la lentissima trasposizione
+//  su host. Usa la Shared Memory per coalescere letture e scritture.
 // ═══════════════════════════════════════════════════════════════
-static void host_transpose(int M, int N, const float* src, float* dst) {
-    for (int i = 0; i < M; ++i)
-        for (int j = 0; j < N; ++j)
-            dst[j * M + i] = src[i * N + j];
+__global__ void transpose_gpu_kernel(int M, int N, const float* __restrict__ idata, float* __restrict__ odata) {
+    // +1 per azzerare i bank conflicts
+    __shared__ float tile[TILE_DIM][TILE_DIM + 1];
+
+    int x = blockIdx.x * TILE_DIM + threadIdx.x;
+    int y = blockIdx.y * TILE_DIM + threadIdx.y;
+
+    // Lettura coalescente dalla matrice originale
+    if (x < N && y < M) {
+        tile[threadIdx.y][threadIdx.x] = idata[y * N + x];
+    }
+
+    __syncthreads();
+
+    // Ricalcolo coordinate per la scrittura trasposta
+    x = blockIdx.y * TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TILE_DIM + threadIdx.y;
+
+    // Scrittura coalescente sulla matrice destinazione
+    if (x < M && y < N) {
+        odata[y * M + x] = tile[threadIdx.x][threadIdx.y];
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  KERNEL 4: Transposed Coalesced
-//
-//  Calcola Y_loc (M×k) = A_loc (M×N) * X_loc (N×k)
-//  usando A_T = A_loc trasposta (N×M, row-major)
-//
-//  Accessi memoria:
-//    d_AT[l*M + row_i]: 32 thread consecutivi (x) leggono
-//                        indirizzi contigui → COALESCENTE ✓
-//    d_X[l*k  + col_k]: tutti i thread nel semi-warp (stessa y)
-//                        leggono lo stesso valore → BROADCAST ✓
-//    d_Y[row_i*k+col_k]: scrittura stride-k su row_i variabile
-//                         (stesso pattern degli altri kernel)
+//  2. KERNEL MATEMATICO CON CORNER TURN
+//  Calcola Y = A_T^T * X sfruttando la shared memory per riallineare
+//  la scrittura e renderla perfettamente coalescente.
 // ═══════════════════════════════════════════════════════════════
 __global__ void matMultivettoreKernel_v4(int M, int N, int k,
                                           const float* __restrict__ d_AT,
                                           const float* __restrict__ d_X,
                                           float* __restrict__ d_Y)
 {
-    // FIX: row_i su threadIdx.x (varia veloce → coalescing su d_AT)
-    //      col_k su threadIdx.y (varia lento  → broadcast su d_X)
-    int row_i = blockIdx.x * blockDim.x + threadIdx.x;  // ∈ [0, M)
-    int col_k = blockIdx.y * blockDim.y + threadIdx.y;  // ∈ [0, k)
+    // Mattonella di Shared Memory per scambiare gli assi (Corner Turn)
+    __shared__ float smem_Y[TILE_DIM][TILE_DIM + 1];
 
+    // Mappatura 1: threadIdx.x associato a row_i per avere lettura
+    // perfettamente coalescente da d_AT
+    int row_i = blockIdx.x * TILE_DIM + threadIdx.x;
+    int col_k = blockIdx.y * TILE_DIM + threadIdx.y;
+
+    float sum = 0.0f;
     if (row_i < M && col_k < k) {
-        float sum = 0.0f;
-
-        // d_AT è N×M: d_AT[l][row_i] = d_AT[l*M + row_i] = A[row_i][l]
-        // d_X  è N×k: d_X[l][col_k]  = d_X[l*k  + col_k]
-        // sum = Σ_l A[row_i][l] * X[l][col_k] = (A*X)[row_i][col_k] ✓
         #pragma unroll 8
         for (int l = 0; l < N; ++l) {
             sum += d_AT[l * M + row_i] * d_X[l * k + col_k];
         }
+    }
 
-        d_Y[row_i * k + col_k] = sum;
+    // Salvataggio temporaneo in Shared Memory.
+    // Thread del warp (stesso threadIdx.y) scrivono su threadIdx.x consecutivi.
+    if (row_i < M && col_k < k) {
+        smem_Y[threadIdx.y][threadIdx.x] = sum;
+    }
+
+    __syncthreads();
+
+    // Mappatura 2: Invertiamo la logica. Ora threadIdx.x (che garantisce
+    // la coalescenza fisica del Warp) viene associato a col_k!
+    int out_col_k = blockIdx.y * TILE_DIM + threadIdx.x;
+    int out_row_i = blockIdx.x * TILE_DIM + threadIdx.y;
+
+    if (out_row_i < M && out_col_k < k) {
+        // Lettura dalla Shared Memory e scrittura su RAM globale
+        // d_Y layout: righe x colonne. Scrivendo su out_col_k,
+        // la scrittura è al 100% coalescente.
+        d_Y[out_row_i * k + out_col_k] = smem_Y[threadIdx.x][threadIdx.y];
     }
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  INTERFACCIA STANDARD (kernel.h)
-//  Stesso contratto di tutti gli altri kernel del progetto:
-//    setup_device_memory  → trasposizione + H2D + malloc (FUORI dal timer)
-//    compute_local_gemm   → solo kernel + sync            (DENTRO il timer)
-//    free_device_memory   → D2H + cudaFree                (FUORI dal timer)
+//  INTERFACCIA STANDARD
 // ═══════════════════════════════════════════════════════════════
-
 extern "C"
 void setup_device_memory(int M, int N, int k,
                           const float *h_A, const float *h_X)
 {
     cuda_select_device_or_die();
 
-    // 1. Trasponi A su host (una volta sola, fuori dal timer)
-    float *h_AT = NULL;
-    if (posix_memalign((void**)&h_AT, 64,
-                       (size_t)N * M * sizeof(float)) != 0) {
-        fprintf(stderr, "[K4] Errore alloc h_AT\n");
-        exit(EXIT_FAILURE);
-    }
-    host_transpose(M, N, h_A, h_AT);
-
-    // 2. Alloca memoria device
+    // 1. Alloca memorie sul device (Compresa una temporanea per A)
+    CHECK_CUDA(cudaMalloc(&d_A,  (size_t)N * M * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_AT, (size_t)N * M * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_X,  (size_t)N * k * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_Y,  (size_t)M * k * sizeof(float)));
 
-    // 3. Copia H2D (A trasposta + X)
-    CHECK_CUDA(cudaMemcpy(d_AT, h_AT,
-                          (size_t)N * M * sizeof(float),
-                          cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_X, h_X,
-                          (size_t)N * k * sizeof(float),
-                          cudaMemcpyHostToDevice));
+    // 2. Trasferimento H2D veloce
+    CHECK_CUDA(cudaMemcpy(d_A, h_A, (size_t)N * M * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_X, h_X, (size_t)N * k * sizeof(float), cudaMemcpyHostToDevice));
 
-    free(h_AT);
+    // 3. Trasposizione rapidissima in VRAM
+    dim3 block_trans(TILE_DIM, TILE_DIM);
+    dim3 grid_trans((N + TILE_DIM - 1) / TILE_DIM, (M + TILE_DIM - 1) / TILE_DIM);
+
+    transpose_gpu_kernel<<<grid_trans, block_trans>>>(M, N, d_A, d_AT);
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    // 4. Pulizia: La matrice A non trasposta non serve più, liberiamo VRAM
+    CHECK_CUDA(cudaFree(d_A));
+    d_A = NULL;
 }
 
 extern "C"
 void compute_local_gemm(int M, int N, int k,
-                         const float *h_A,   // non usato: dati già sul device
-                         const float *h_X,   // non usato: dati già sul device
-                         float *h_Y)         // non usato: copia in free_device_memory
+                         const float *h_A,
+                         const float *h_X,
+                         float *h_Y)
 {
-    // Configura griglia:
-    //   x → righe di Y (row_i, coalescente su d_AT)
-    //   y → colonne di Y (col_k)
-    dim3 block(K4_BDIM_ROW, K4_BDIM_K);                       // 32×4 = 128 thread
-    dim3 grid((M + K4_BDIM_ROW - 1) / K4_BDIM_ROW,
-              (k + K4_BDIM_K   - 1) / K4_BDIM_K);
+    // Griglia bloccata a 32x32 per accomodare la logica del Corner Turn
+    dim3 block(TILE_DIM, TILE_DIM);
+    dim3 grid((M + TILE_DIM - 1) / TILE_DIM, (k + TILE_DIM - 1) / TILE_DIM);
 
     matMultivettoreKernel_v4<<<grid, block>>>(M, N, k, d_AT, d_X, d_Y);
+
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 }
@@ -155,19 +160,17 @@ extern "C"
 void compute_local_gemm_naive(int M, int N, int k,
                               const float *h_A, const float *h_X, float *h_Y)
 {
-    // Il kernel CUDA 4 non implementa una variante naive separata: manteniamo
-    // l'API completa senza ricorrere a macro di rinomina durante il linking.
     compute_local_gemm(M, N, k, h_A, h_X, h_Y);
 }
 
 extern "C"
 void free_device_memory(int M, int N, int k, float *h_Y)
 {
-    // Copia risultato D2H e libera memoria device
-    CHECK_CUDA(cudaMemcpy(h_Y, d_Y,
-                          (size_t)M * k * sizeof(float),
-                          cudaMemcpyDeviceToHost));
-    CHECK_CUDA(cudaFree(d_AT)); d_AT = NULL;
-    CHECK_CUDA(cudaFree(d_X));  d_X  = NULL;
-    CHECK_CUDA(cudaFree(d_Y));  d_Y  = NULL;
+    CHECK_CUDA(cudaMemcpy(h_Y, d_Y, (size_t)M * k * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // Rilascio di sicurezza per tutte le strutture
+    if(d_A)  { CHECK_CUDA(cudaFree(d_A));  d_A  = NULL; }
+    if(d_AT) { CHECK_CUDA(cudaFree(d_AT)); d_AT = NULL; }
+    if(d_X)  { CHECK_CUDA(cudaFree(d_X));  d_X  = NULL; }
+    if(d_Y)  { CHECK_CUDA(cudaFree(d_Y));  d_Y  = NULL; }
 }
