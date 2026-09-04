@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """
-plot_timing.py — Barre impilate distribuzione/trasferimento/calcolo, stile
-Fig. 16-17 della relazione di riferimento.
-
 Legge results/risultati_tempi.csv (schema: Mode,Backend,M,N,k,MPI_Ranks,Run,
 ParallelTime,DistribTime,TransferTime) e genera un grafico a griglia: un
 sottografico per (Mode, taglia), barre impilate per k.
-
-Uso:
-    python3 plot_timing.py results/risultati_tempi.csv --outdir grafici_report
 """
 import argparse
 import os

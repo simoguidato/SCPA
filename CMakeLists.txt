@@ -16,7 +16,7 @@ set(CORE_SOURCES
     core/utils.c
     core/args.c
     core/validation.c
-        cuda/kernel_cuda_0.cu
+
 )
 
 if(USE_CUDA)

@@ -29,7 +29,6 @@ CONFIGS=(
 )
 
 K_SETS=("small:3 6 8 20 32" "large:64 128")
-# Le tue matrici specifiche
 SIZES=("2000 2000" "2000 4000" "4000 2000" "6000 2000" "4000 4000" "2000 6000")
 
 export OMP_PLACES=cores

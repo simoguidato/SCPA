@@ -4,18 +4,12 @@
 #include "kernel.h"
 #include "utils.h"
 #include "cuda_device_utils.cuh"
-//DA FINIRE E RIFARE ESECUZIONE CUDA E MODIFICARE LA RELAZIONE
 // ═══════════════════════════════════════════════════════════════
 //  CONFIGURAZIONE THREAD
 //  Utilizziamo un Tile quadrato 32x32 per ottimizzare sia la
-//  lettura coalescente (su AT) che la scrittura coalescente (su Y)
-//  attraverso la tecnica del "Corner Turn".
+//  lettura coalescente (su AT) che la scrittura coalescente (su Y).
 // ═══════════════════════════════════════════════════════════════
 #define TILE_DIM 32
-
-// ═══════════════════════════════════════════════════════════════
-//  HELPER ERRORI CUDA
-// ═══════════════════════════════════════════════════════════════
 #undef CHECK_CUDA
 #define CHECK_CUDA(val) check_cuda_err((val), #val, __FILE__, __LINE__)
 static void check_cuda_err(cudaError_t err, const char* func,
@@ -33,11 +27,6 @@ static float *d_AT = NULL; // A trasposta su GPU
 static float *d_X  = NULL; // Multivettore X
 static float *d_Y  = NULL; // Risultato Y
 
-// ═══════════════════════════════════════════════════════════════
-//  1. KERNEL DI TRASPOSIZIONE (SU GPU)
-//  Eseguito in fase di setup. Sostituisce la lentissima trasposizione
-//  su host. Usa la Shared Memory per coalescere letture e scritture.
-// ═══════════════════════════════════════════════════════════════
 __global__ void transpose_gpu_kernel(int M, int N, const float* __restrict__ idata, float* __restrict__ odata) {
     // +1 per azzerare i bank conflicts
     __shared__ float tile[TILE_DIM][TILE_DIM + 1];
@@ -62,17 +51,11 @@ __global__ void transpose_gpu_kernel(int M, int N, const float* __restrict__ ida
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  2. KERNEL MATEMATICO CON CORNER TURN
-//  Calcola Y = A_T^T * X sfruttando la shared memory per riallineare
-//  la scrittura e renderla perfettamente coalescente.
-// ═══════════════════════════════════════════════════════════════
 __global__ void matMultivettoreKernel_v4(int M, int N, int k,
                                           const float* __restrict__ d_AT,
                                           const float* __restrict__ d_X,
                                           float* __restrict__ d_Y)
 {
-    // Mattonella di Shared Memory per scambiare gli assi (Corner Turn)
     __shared__ float smem_Y[TILE_DIM][TILE_DIM + 1];
 
     // Mappatura 1: threadIdx.x associato a row_i per avere lettura
@@ -103,39 +86,35 @@ __global__ void matMultivettoreKernel_v4(int M, int N, int k,
 
     if (out_row_i < M && out_col_k < k) {
         // Lettura dalla Shared Memory e scrittura su RAM globale
-        // d_Y layout: righe x colonne. Scrivendo su out_col_k,
-        // la scrittura è al 100% coalescente.
+        // d_Y layout: righe x colonne.
         d_Y[out_row_i * k + out_col_k] = smem_Y[threadIdx.x][threadIdx.y];
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  INTERFACCIA STANDARD
-// ═══════════════════════════════════════════════════════════════
 extern "C"
 void setup_device_memory(int M, int N, int k,
                           const float *h_A, const float *h_X)
 {
     cuda_select_device_or_die();
 
-    // 1. Alloca memorie sul device (Compresa una temporanea per A)
+    // Alloca memorie sul device
     CHECK_CUDA(cudaMalloc(&d_A,  (size_t)N * M * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_AT, (size_t)N * M * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_X,  (size_t)N * k * sizeof(float)));
     CHECK_CUDA(cudaMalloc(&d_Y,  (size_t)M * k * sizeof(float)));
 
-    // 2. Trasferimento H2D veloce
+    //  Trasferimento H2D
     CHECK_CUDA(cudaMemcpy(d_A, h_A, (size_t)N * M * sizeof(float), cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_X, h_X, (size_t)N * k * sizeof(float), cudaMemcpyHostToDevice));
 
-    // 3. Trasposizione rapidissima in VRAM
+    // Trasposizione in VRAM
     dim3 block_trans(TILE_DIM, TILE_DIM);
     dim3 grid_trans((N + TILE_DIM - 1) / TILE_DIM, (M + TILE_DIM - 1) / TILE_DIM);
 
     transpose_gpu_kernel<<<grid_trans, block_trans>>>(M, N, d_A, d_AT);
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    // 4. Pulizia: La matrice A non trasposta non serve più, liberiamo VRAM
+    // La matrice A non trasposta non serve più, liberiamo VRAM
     CHECK_CUDA(cudaFree(d_A));
     d_A = NULL;
 }
@@ -146,7 +125,7 @@ void compute_local_gemm(int M, int N, int k,
                          const float *h_X,
                          float *h_Y)
 {
-    // Griglia bloccata a 32x32 per accomodare la logica del Corner Turn
+    // Griglia bloccata a 32x32
     dim3 block(TILE_DIM, TILE_DIM);
     dim3 grid((M + TILE_DIM - 1) / TILE_DIM, (k + TILE_DIM - 1) / TILE_DIM);
 

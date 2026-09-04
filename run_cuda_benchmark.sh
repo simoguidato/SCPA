@@ -26,7 +26,6 @@ case "$K_SET" in
     *) echo "K_SET non valido: $K_SET (usa small|large|all)" >&2; exit 1 ;;
 esac
 
-# Le tue matrici specifiche
 SIZES=("2000 2000" "2000 4000" "4000 2000" "6000 2000" "4000 4000" "2000 6000")
 read -r -a MPI_PROCS <<< "$MPI_PROCS_LIST"
 

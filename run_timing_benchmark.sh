@@ -1,15 +1,14 @@
 #!/bin/bash
 # ==============================================================================
-# run_timing_benchmark.sh — Mini-campagna per tempi di distribuzione/trasferimento
-#
+# run_timing_benchmark.sh —
 # Misura, a parte rispetto al benchmark principale, il tempo di:
 #   - distribuzione MPI del multivettore X (MPI_Bcast)
 #   - trasferimento H2D + D2H (solo per kernel CUDA; ~0 per OMP)
 #
-# Campagna volutamente ridotta (poche decine/centinaia di run, non ore):
+# Campagna volutamente ridotta:
 # 2 kernel CUDA rappresentativi + 1 kernel OMP rappresentativo,
 # tutte le taglie, tutti i k, NP=1 (isola il fenomeno dalla complessità di
-# griglia, già analizzata a parte).
+# griglia).
 #
 # Uso:
 #   CUDA_ARCH=75 NUM_RUNS=3 ./run_timing_benchmark.sh
@@ -37,7 +36,6 @@ declare -A KERNEL_NAMES=(
 mkdir -p results
 init_timing_csv "$OUTPUT_FILE"
 
-# --- Parte CUDA ---
 if [ -n "${CUDA_ARCH:-}" ]; then
     for id in $CUDA_KERNEL_IDS; do
         build_cuda_kernel "$id"

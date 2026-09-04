@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 """
-plot_results.py — Genera i grafici di performance per la relazione SCPA.
-
-Legge uno o più CSV con lo schema comune prodotto da run_cuda_benchmark.sh /
-run_omp_benchmark.sh:
-
-    Mode,Backend,M,N,k,MPI_Ranks,GridRows,GridCols,OMP_Threads,CUDA_Arch,
-    Run,ParallelTime,SequentialTime,RelativeError,GFLOPS,SpeedUp
-
-Uso tipico:
-    python3 plot_results.py results/risultati_cuda.csv
-    python3 plot_results.py results/risultati_cuda.csv results/risultati_omp.csv \
-        --outdir grafici_report --k-fixed 32 --np-fixed 1
-
+plot_results.py — Genera i grafici di performance
 Tutti i grafici vengono salvati come PNG in --outdir (default: grafici_output/).
 """
 import argparse
@@ -20,7 +8,7 @@ import os
 import sys
 
 import matplotlib
-matplotlib.use("Agg")  # nessun display: va bene anche su server senza X
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -48,13 +36,6 @@ OMP_MODES = ["Naive_SMP", "Naive_Hybrid", "Opt_SMP", "Opt_Hybrid"]
 
 
 def add_best_rows(df):
-    """
-    Aggiunge righe sintetiche 'CUDA_best' e 'OMP_best': per ciascuna configurazione
-    (M,N,k,MPI_Ranks,Run) prende il kernel realmente migliore in quel punto, invece
-    di assumere un kernel fisso come "il migliore" per ogni k (che non è vero: es.
-    Transposed vince a k piccoli, Tiled a k grandi). La colonna 'BestKernel' ricorda
-    quale kernel reale ha vinto in ciascun punto.
-    """
     group_cols = ["M", "N", "k", "MPI_Ranks", "Run"]
     frames = [df]
     for label, modes in [("CUDA_best", CUDA_MODES), ("OMP_best", OMP_MODES)]:
@@ -159,7 +140,7 @@ def plot_gflops_vs_k(df, outdir, m_fixed, n_fixed):
 
 
 # ---------------------------------------------------------------------------
-# 3. Speedup rispetto al seriale (solo run di validazione, dove è calcolato)
+# 3. Speedup rispetto al seriale
 # ---------------------------------------------------------------------------
 def plot_speedup_vs_serial(df, outdir, k_fixed):
     sub = df[(df["k"] == k_fixed) & (df["SpeedUp"] > 0)]
@@ -189,7 +170,7 @@ def plot_speedup_vs_serial(df, outdir, k_fixed):
 
 
 # ---------------------------------------------------------------------------
-# 4. Confronto kernel x k (barre raggruppate) a una taglia fissata
+# 4. Confronto kernel x k a una taglia fissata
 # ---------------------------------------------------------------------------
 def plot_kernel_comparison(df, outdir, m_fixed, n_fixed):
     sub = df[(df["M"] == m_fixed) & (df["N"] == n_fixed)]
@@ -472,7 +453,6 @@ def plot_gflops_vs_np_grid_by_k(df, outdir, m_fixed, n_fixed):
 
 # ---------------------------------------------------------------------------
 # 13. Griglia: Speedup vs seriale in funzione di k, un sottografico per dimensione
-#     (equivalente alle Fig. 11-13 della relazione di riferimento)
 # ---------------------------------------------------------------------------
 def plot_speedup_vs_k_grid(df, outdir):
     sub_all = df[df["SpeedUp"] > 0]
@@ -504,8 +484,7 @@ def plot_speedup_vs_k_grid(df, outdir):
 
 
 # ---------------------------------------------------------------------------
-# 14. Impatto geometrico aggregato per kernel (equivalente alla Fig. 10 della
-#     relazione di riferimento): x=kernel, barre=forma (Tall/Square/Wide)
+# 14. Impatto geometrico aggregato per kernel
 # ---------------------------------------------------------------------------
 def _shape_category(row):
     m, n = row["M"], row["N"]
@@ -544,8 +523,6 @@ def plot_geometric_impact_by_kernel(df, outdir, k_fixed):
 
 # ---------------------------------------------------------------------------
 # 15. Impatto della topologia di griglia MPI (P x Q) a NP fissato
-#     Richiede righe con GridRows/GridCols espliciti (> 0), prodotte con
-#     run_cuda_grid_topology.sh o con le config Opt_Grid* di run_omp_benchmark.sh
 # ---------------------------------------------------------------------------
 def plot_grid_topology_impact(df, outdir, k_fixed):
     sub = df[(df["k"] == k_fixed) & (df["GridRows"] > 0) & (df["GridCols"] > 0)].copy()
@@ -578,7 +555,7 @@ def plot_grid_topology_impact(df, outdir, k_fixed):
 
 
 # ---------------------------------------------------------------------------
-# 16. Griglia "stile colleghe": un sottografico per k, TUTTI i kernel
+# 16. un sottografico per k, TUTTI i kernel
 #     (CUDA + OMP insieme) come barre raggruppate su tutte le taglie
 # ---------------------------------------------------------------------------
 def plot_all_kernels_grid_by_k(df, outdir, exclude_modes=("Serial", "Opt_Grid1x8", "Opt_Grid2x4", "Opt_Grid8x1"),
@@ -649,9 +626,6 @@ def plot_champion_comparison(df, outdir, k_fixed, best_cuda_mode, best_omp_mode)
 
     _save(fig, outdir, f"COMP_champion_vs_champion_k{k_fixed}.png")
 
-# ==============================================================================
-# CONFRONTO SFRONTATO: CPU vs GPU (Barre raggruppate con numeri)
-# ==============================================================================
 def plot_brute_force_comparison(df, outdir, k_fixed, best_cuda_mode, best_omp_mode):
     """
     Confronto diretto (a barre) con numeri visibili tra i campioni CUDA, OpenMP e Serial.
@@ -684,17 +658,12 @@ def plot_brute_force_comparison(df, outdir, k_fixed, best_cuda_mode, best_omp_mo
     x = np.arange(len(pivot.index))
     width = 0.25  # Larghezza delle barre
 
-    # Disegniamo le barre
     for i, mode in enumerate(cols_ordered):
-        # Spostiamo le barre per affiancarle: -width, 0, +width (circa)
         offset = (i - len(cols_ordered)/2 + 0.5) * width
         bars = ax.bar(x + offset, pivot[mode], width=width, label=mode, color=_color_for(mode))
-
-        # IL TOCCO "SFRONTATO": Stampiamo il valore numerico esatto sopra ogni barra!
         for bar in bars:
             height = bar.get_height()
             if not np.isnan(height) and height > 0:
-                # Arrotondiamo e stampiamo
                 ax.annotate(f"{height:.0f}",
                             xy=(bar.get_x() + bar.get_width() / 2, height),
                             xytext=(0, 4),  # offset verticale di 4 punti
